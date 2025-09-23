@@ -4,3 +4,5 @@ Play on Mouse Maze Puzzle but with a 1v1 aspect and changing search algorithm ca
 - Users can chose the search algorithm for each mouse
 - It's a step-by-step program or autoplay version
 - It has available sabotages
+
+-- Test change
