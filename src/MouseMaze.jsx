@@ -671,7 +671,7 @@ const MouseMaze = () => {
         clearInterval(playIntervalRef.current);
       }
     };
-  }, [isPlaying, gameOver]);
+  }, [isPlaying, gameOver, currentPlayer, redPos, bluePos, maze, sabotageTokens, turnsSinceMove, redAlgorithm, blueAlgorithm]);
 
   const getCellClass = (x, y) => {
     let classes = 'aspect-square flex items-center justify-center text-xl border-2 rounded-lg transition-all relative ';
@@ -1017,3 +1017,4 @@ const MouseMaze = () => {
 };
 
 export default MouseMaze;
+
