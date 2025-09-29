@@ -1,0 +1,8 @@
+- Fix BiDirectional Visualization and sabotage factor
+- Get Rid of Duplicate Visualization Toggle
+- Implement maze randomizer button
+- Implement smarter sabotage (remove to help, place to hurt)
+- Add Better Mice Images
+- Center Controls at top of screen
+- Understand (FORCED TO MOVE) Indicator
+- Modularize Code --> IN PROGRESS <--
