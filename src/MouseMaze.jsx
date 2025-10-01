@@ -22,9 +22,8 @@ const MouseMaze = () => {
   const [showPaths, setShowPaths] = useState(true);
   const [exploringCells, setExploringCells] = useState([]);
   const [visitedCells, setVisitedCells] = useState([]);
-
+  const [playSpeed, setPlaySpeed] = useState(2500);
   const playIntervalRef = useRef(null);
-  const animationTimeoutRef = useRef(null);
 
   // Initialize maze on component mount
   useEffect(() => {
@@ -659,7 +658,7 @@ const MouseMaze = () => {
     if (isPlaying && !gameOver) {
       playIntervalRef.current = setInterval(() => {
         makeMove();
-      }, 2500);
+      }, playSpeed);
     } else {
       if (playIntervalRef.current) {
         clearInterval(playIntervalRef.current);
@@ -671,7 +670,7 @@ const MouseMaze = () => {
         clearInterval(playIntervalRef.current);
       }
     };
-  }, [isPlaying, gameOver, currentPlayer, redPos, bluePos, maze, sabotageTokens, turnsSinceMove, redAlgorithm, blueAlgorithm]);
+  }, [isPlaying, gameOver, currentPlayer, redPos, bluePos, maze, sabotageTokens, turnsSinceMove, redAlgorithm, blueAlgorithm, playSpeed]);
 
   const getCellClass = (x, y) => {
     let classes = 'aspect-square flex items-center justify-center text-xl border-2 rounded-lg transition-all relative ';
@@ -762,6 +761,34 @@ const MouseMaze = () => {
           <div className="lg:col-span-2">
             <div className="bg-gray-900/50 backdrop-blur-lg rounded-2xl shadow-2xl p-6 border border-gray-700">
               {/* Controls */}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 bg-gray-800/50 rounded-lg px-4 py-2">
+                  <label className="text-sm text-gray-300 font-medium">Speed:</label>
+                  <input
+                    type="range"
+                    min="500"
+                    max="5000"
+                    step="100"
+                    value={playSpeed}
+                    onChange={(e) => setPlaySpeed(Number(e.target.value))}
+                    className="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                  />
+                  <span className="text-xs text-gray-400 w-12 text-right">
+                    {(playSpeed / 1000).toFixed(1)}s
+                  </span>
+                </div>
+                <button
+                  onClick={() => setShowPaths(!showPaths)}
+                  className={`p-2 rounded-lg transition-all ${
+                    showPaths
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-700 text-gray-400'
+                  }`}
+                >
+                  <MapPin size={20} />
+                </button>
+              </div>
+
               <div className="flex justify-between items-center mb-6">
                 <div className="flex gap-3">
                   <button
