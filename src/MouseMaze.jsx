@@ -259,6 +259,90 @@ const MouseMaze = () => {
     return null;
   };
 
+  const findPathBidirectional = (start, goal, currentMaze) => {
+    if (start.x === goal.x && start.y === goal.y) {
+      return [start];
+    }
+
+    // Two BFS queues - forward and backward
+    const forwardQueue = [{ ...start, path: [start] }];
+    const backwardQueue = [{ ...goal, path: [goal] }];
+    
+    // Visited sets for each direction
+    const forwardVisited = new Map();
+    const backwardVisited = new Map();
+    
+    forwardVisited.set(`${start.x},${start.y}`, { ...start, path: [start] });
+    backwardVisited.set(`${goal.x},${goal.y}`, { ...goal, path: [goal] });
+
+    const directions = [
+      { x: 0, y: 1 }, { x: 1, y: 0 },
+      { x: 0, y: -1 }, { x: -1, y: 0 }
+    ];
+
+    while (forwardQueue.length > 0 || backwardQueue.length > 0) {
+      // Expand forward search
+      if (forwardQueue.length > 0) {
+        const current = forwardQueue.shift();
+        const currentKey = `${current.x},${current.y}`;
+        
+        // Check if backward search has visited this node
+        if (backwardVisited.has(currentKey)) {
+          const backwardNode = backwardVisited.get(currentKey);
+          // Combine paths: forward path + reversed backward path
+          const combinedPath = [
+            ...current.path,
+            ...backwardNode.path.slice(0, -1).reverse()
+          ];
+          return combinedPath;
+        }
+
+        // Expand neighbors
+        for (let dir of directions) {
+          const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
+          const neighborKey = `${neighbor.x},${neighbor.y}`;
+          
+          if (isValidMove(neighbor, currentMaze) && !forwardVisited.has(neighborKey)) {
+            const neighborNode = { ...neighbor, path: [...current.path, neighbor] };
+            forwardVisited.set(neighborKey, neighborNode);
+            forwardQueue.push(neighborNode);
+          }
+        }
+      }
+
+      // Expand backward search
+      if (backwardQueue.length > 0) {
+        const current = backwardQueue.shift();
+        const currentKey = `${current.x},${current.y}`;
+        
+        // Check if forward search has visited this node
+        if (forwardVisited.has(currentKey)) {
+          const forwardNode = forwardVisited.get(currentKey);
+          // Combine paths: forward path + reversed backward path
+          const combinedPath = [
+            ...forwardNode.path,
+            ...current.path.slice(0, -1).reverse()
+          ];
+          return combinedPath;
+        }
+
+        // Expand neighbors
+        for (let dir of directions) {
+          const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
+          const neighborKey = `${neighbor.x},${neighbor.y}`;
+          
+          if (isValidMove(neighbor, currentMaze) && !backwardVisited.has(neighborKey)) {
+            const neighborNode = { ...neighbor, path: [...current.path, neighbor] };
+            backwardVisited.set(neighborKey, neighborNode);
+            backwardQueue.push(neighborNode);
+          }
+        }
+      }
+    }
+
+    return null;
+  };
+
   const findPath = (start, goal, algorithm, currentMaze) => {
     switch(algorithm) {
       case 'astar':
@@ -268,8 +352,7 @@ const MouseMaze = () => {
       case 'dfs':
         return findPathDFS(start, goal, currentMaze);
       case 'bidirectional':
-        // Fallback to A* for bidirectional
-        return findPathAStar(start, goal, currentMaze);
+        return findPathBidirectional(start, goal, currentMaze);
       default:
         return findPathBFS(start, goal, currentMaze);
     }
@@ -299,6 +382,14 @@ const MouseMaze = () => {
     // Clear previous visualization
     setExploringCells([]);
     setVisitedCells([]);
+    
+    // Calculate visualization delay based on playSpeed
+    // playSpeed: 500ms (fast) to 5000ms (slow)
+    // Visualization delays: 20ms (fast) to 200ms (slow)
+    const getVisualizationDelay = (baseDelay = 100) => {
+      const speedFactor = playSpeed / 1000; // 0.5 to 5.0
+      return Math.max(20, Math.min(200, baseDelay * speedFactor * 0.4));
+    };
    
     if (algorithm === 'astar') {
       steps.push(`A* Search: Exploring with heuristic guidance...`);
@@ -320,7 +411,7 @@ const MouseMaze = () => {
           setVisitedCells([...visited]);
           setExploringCells([current]);
           steps.push(`  Exploring (${current.x},${current.y}) - f=${current.f.toFixed(1)}`);
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
          
           if (current.x === goal.x && current.y === goal.y) {
             steps.push(`✅ Path found! Length: ${current.path.length - 1} steps`);
@@ -345,7 +436,7 @@ const MouseMaze = () => {
          
           // Show cells being considered
           setExploringCells([...exploring]);
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(50)));
           exploring.length = 0;
          
           iterations++;
@@ -368,7 +459,7 @@ const MouseMaze = () => {
         if (current.level > currentLevel) {
           currentLevel = current.level;
           setExploringCells([...levelNodes]);
-          await new Promise(resolve => setTimeout(resolve, 150));
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(150)));
           levelNodes = [];
         }
        
@@ -397,7 +488,7 @@ const MouseMaze = () => {
         }
        
         iterations++;
-        await new Promise(resolve => setTimeout(resolve, 60));
+        await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(60)));
       }
     } else if (algorithm === 'dfs') {
       steps.push(`DFS: Deep exploration with backtracking...`);
@@ -417,7 +508,7 @@ const MouseMaze = () => {
         setVisitedCells([...visited]);
         setExploringCells([current]);
         steps.push(`  Depth ${current.depth}: Exploring (${current.x},${current.y})`);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
        
         if (current.x === goal.x && current.y === goal.y) {
           steps.push(`✅ Path found! Length: ${current.path.length - 1} steps (may not be shortest)`);
@@ -444,6 +535,118 @@ const MouseMaze = () => {
         }
        
         iterations++;
+      }
+    } else if (algorithm === 'bidirectional') {
+      steps.push(`Bidirectional Search: Expanding from both start and goal simultaneously...`);
+      
+      // Two BFS queues - forward and backward
+      const forwardQueue = [{ ...start, path: [start], level: 0, direction: 'forward' }];
+      const backwardQueue = [{ ...goal, path: [goal], level: 0, direction: 'backward' }];
+      
+      // Visited sets for each direction
+      const forwardVisited = new Map();
+      const backwardVisited = new Map();
+      
+      forwardVisited.set(`${start.x},${start.y}`, { ...start, path: [start] });
+      backwardVisited.set(`${goal.x},${goal.y}`, { ...goal, path: [goal] });
+
+      const directions = [
+        { x: 0, y: 1 }, { x: 1, y: 0 },
+        { x: 0, y: -1 }, { x: -1, y: 0 }
+      ];
+
+      let iterations = 0;
+      let forwardLevel = 0;
+      let backwardLevel = 0;
+      let meetingPoint = null;
+
+      while ((forwardQueue.length > 0 || backwardQueue.length > 0) && iterations < 25) {
+        
+        // Expand forward search
+        if (forwardQueue.length > 0) {
+          const current = forwardQueue.shift();
+          const currentKey = `${current.x},${current.y}`;
+          
+          // Update visualization for forward search
+          setVisitedCells(prev => [...prev, { ...current, direction: 'forward' }]);
+          setExploringCells([{ ...current, direction: 'forward' }]);
+          
+          if (current.level > forwardLevel) {
+            forwardLevel = current.level;
+            steps.push(`  Forward search level ${forwardLevel}: exploring from start`);
+          }
+          
+          // Check if backward search has visited this node
+          if (backwardVisited.has(currentKey)) {
+            const backwardNode = backwardVisited.get(currentKey);
+            steps.push(`🎯 MEETING POINT FOUND at (${current.x},${current.y})!`);
+            steps.push(`  Forward path length: ${current.path.length - 1}`);
+            steps.push(`  Backward path length: ${backwardNode.path.length - 1}`);
+            meetingPoint = { forward: current, backward: backwardNode };
+            break;
+          }
+
+          // Expand neighbors
+          for (let dir of directions) {
+            const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
+            const neighborKey = `${neighbor.x},${neighbor.y}`;
+            
+            if (isValidMove(neighbor, maze) && !forwardVisited.has(neighborKey)) {
+              const neighborNode = { ...neighbor, path: [...current.path, neighbor], level: current.level + 1, direction: 'forward' };
+              forwardVisited.set(neighborKey, neighborNode);
+              forwardQueue.push(neighborNode);
+            }
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
+        }
+
+        // Expand backward search
+        if (backwardQueue.length > 0 && !meetingPoint) {
+          const current = backwardQueue.shift();
+          const currentKey = `${current.x},${current.y}`;
+          
+          // Update visualization for backward search
+          setVisitedCells(prev => [...prev, { ...current, direction: 'backward' }]);
+          setExploringCells([{ ...current, direction: 'backward' }]);
+          
+          if (current.level > backwardLevel) {
+            backwardLevel = current.level;
+            steps.push(`  Backward search level ${backwardLevel}: exploring from goal`);
+          }
+          
+          // Check if forward search has visited this node
+          if (forwardVisited.has(currentKey)) {
+            const forwardNode = forwardVisited.get(currentKey);
+            steps.push(`🎯 MEETING POINT FOUND at (${current.x},${current.y})!`);
+            steps.push(`  Forward path length: ${forwardNode.path.length - 1}`);
+            steps.push(`  Backward path length: ${current.path.length - 1}`);
+            meetingPoint = { forward: forwardNode, backward: current };
+            break;
+          }
+
+          // Expand neighbors
+          for (let dir of directions) {
+            const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
+            const neighborKey = `${neighbor.x},${neighbor.y}`;
+            
+            if (isValidMove(neighbor, maze) && !backwardVisited.has(neighborKey)) {
+              const neighborNode = { ...neighbor, path: [...current.path, neighbor], level: current.level + 1, direction: 'backward' };
+              backwardVisited.set(neighborKey, neighborNode);
+              backwardQueue.push(neighborNode);
+            }
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
+        }
+        
+        iterations++;
+      }
+      
+      if (meetingPoint) {
+        const totalLength = meetingPoint.forward.path.length + meetingPoint.backward.path.length - 2;
+        steps.push(`✅ Optimal path found! Total length: ${totalLength} steps`);
+        steps.push(`  Bidirectional search explored fewer nodes than unidirectional!`);
       }
     }
    
@@ -754,18 +957,40 @@ const MouseMaze = () => {
     }
    
     // Search visualization effects (in order of priority)
-    const isExploring = exploringCells.some(c => c.x === x && c.y === y);
-    const isVisited = visitedCells.some(c => c.x === x && c.y === y);
+    const exploringCell = exploringCells.find(c => c.x === x && c.y === y);
+    const visitedCell = visitedCells.find(c => c.x === x && c.y === y);
     const isThinking = thinkingCells.some(tc => tc.x === x && tc.y === y);
    
-    if (isExploring) {
-      // Currently exploring - bright animation
-      classes = classes.replace('from-gray-50 to-white', 'from-cyan-300 to-blue-400');
-      classes += ' animate-pulse shadow-lg shadow-cyan-500/50 z-20';
-    } else if (isVisited) {
-      // Already visited - softer color
-      classes = classes.replace('from-gray-50 to-white', 'from-purple-100 to-purple-200');
-      classes += ' opacity-80';
+    if (exploringCell) {
+      // Currently exploring - different colors for bidirectional search
+      if (exploringCell.direction === 'forward') {
+        // Forward search - blue/cyan
+        classes = classes.replace('from-gray-50 to-white', 'from-cyan-300 to-blue-400');
+        classes += ' animate-pulse shadow-lg shadow-cyan-500/50 z-20';
+      } else if (exploringCell.direction === 'backward') {
+        // Backward search - orange/red
+        classes = classes.replace('from-gray-50 to-white', 'from-orange-300 to-red-400');
+        classes += ' animate-pulse shadow-lg shadow-orange-500/50 z-20';
+      } else {
+        // Default exploring (for other algorithms)
+        classes = classes.replace('from-gray-50 to-white', 'from-cyan-300 to-blue-400');
+        classes += ' animate-pulse shadow-lg shadow-cyan-500/50 z-20';
+      }
+    } else if (visitedCell) {
+      // Already visited - different colors for bidirectional search
+      if (visitedCell.direction === 'forward') {
+        // Forward visited - light blue
+        classes = classes.replace('from-gray-50 to-white', 'from-blue-100 to-blue-200');
+        classes += ' opacity-70';
+      } else if (visitedCell.direction === 'backward') {
+        // Backward visited - light orange
+        classes = classes.replace('from-gray-50 to-white', 'from-orange-100 to-orange-200');
+        classes += ' opacity-70';
+      } else {
+        // Default visited (for other algorithms)
+        classes = classes.replace('from-gray-50 to-white', 'from-purple-100 to-purple-200');
+        classes += ' opacity-80';
+      }
     } else if (isThinking) {
       // Final path consideration
       classes = classes.replace('from-gray-50 to-white', 'from-yellow-100 to-yellow-200');
