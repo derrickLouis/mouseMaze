@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, ChevronRight, Brain, Zap, Activity, MapPin } from 'lucide-react';
+import { Play, Pause, RotateCcw, ChevronRight, Brain, Zap, Activity, MapPin, Shuffle } from 'lucide-react';
 
 const MouseMaze = () => {
   const [maze, setMaze] = useState([]);
@@ -30,6 +30,51 @@ const MouseMaze = () => {
     initializeMaze();
   }, []);
 
+  const generateRandomMaze = () => {
+    // Create maze with walls around border
+    const newMaze = Array(10).fill().map((_, y) => 
+      Array(10).fill().map((_, x) => {
+        // Border walls
+        if (x === 0 || x === 9 || y === 0 || y === 9) return 1;
+        // Random interior with 35% wall density
+        return Math.random() < 0.35 ? 1 : 0;
+      })
+    );
+
+    // Ensure critical positions are open
+    const redStart = { x: 1, y: 1 };
+    const blueStart = { x: 8, y: 8 };
+    const cheese = { x: 5, y: 4 };
+
+    newMaze[redStart.y][redStart.x] = 0;
+    newMaze[blueStart.y][blueStart.x] = 0;
+    newMaze[cheese.y][cheese.x] = 0;
+
+    // Ensure paths exist by doing a connectivity check and opening walls if needed
+    const ensureConnectivity = (maze, from, to) => {
+      const path = findPathBFS(from, to, maze);
+      if (!path) {
+        // Create a simple path by opening walls
+        let current = { ...from };
+        while (current.x !== to.x || current.y !== to.y) {
+          // Move toward target
+          if (current.x < to.x) current.x++;
+          else if (current.x > to.x) current.x--;
+          else if (current.y < to.y) current.y++;
+          else if (current.y > to.y) current.y--;
+          
+          maze[current.y][current.x] = 0; // Open the path
+        }
+      }
+    };
+
+    // Ensure both mice can reach cheese
+    ensureConnectivity(newMaze, redStart, cheese);
+    ensureConnectivity(newMaze, blueStart, cheese);
+
+    return newMaze;
+  };
+
   const initializeMaze = () => {
     const initialMaze = [
       [1,1,1,1,1,1,1,1,1,1],
@@ -45,6 +90,29 @@ const MouseMaze = () => {
     ];
     setMaze(initialMaze);
     updatePaths(initialMaze, { x: 1, y: 1 }, { x: 8, y: 8 });
+  };
+
+  const randomizeMaze = () => {
+    const newMaze = generateRandomMaze();
+    setMaze(newMaze);
+    updatePaths(newMaze, { x: 1, y: 1 }, { x: 8, y: 8 });
+    
+    // Reset game state for new maze
+    setRedPos({ x: 1, y: 1 });
+    setBluePos({ x: 8, y: 8 });
+    setCurrentPlayer('red');
+    setTurn(1);
+    setSabotageTokens({ red: 3, blue: 3 });
+    setTurnsSinceMove({ red: 0, blue: 0 });
+    setGameOver(false);
+    setWinner(null);
+    setIsPlaying(false);
+    setGameLog([]);
+    setCalculationSteps(['New maze generated - Let the strategic competition begin!']);
+    setThinkingCells([]);
+    if (playIntervalRef.current) {
+      clearInterval(playIntervalRef.current);
+    }
   };
 
   const resetGame = () => {
@@ -785,6 +853,13 @@ const MouseMaze = () => {
                   >
                     <RotateCcw size={20} />
                     Reset
+                  </button>
+                  <button
+                    onClick={randomizeMaze}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg transition-all shadow-lg"
+                  >
+                    <Shuffle size={20} />
+                    New Maze
                   </button>
                   <button
                     onClick={() => setShowPaths(!showPaths)}
