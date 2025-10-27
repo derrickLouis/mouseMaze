@@ -3,6 +3,6 @@
 - Implement maze randomizer button
 - Implement smarter sabotage (remove to help, place to hurt)
 - Add Better Mice Images
-- Center Controls at top of screen
+- Center Controls at top of screen ✓ COMPLETED
 - Understand (FORCED TO MOVE) Indicator
 - Modularize Code --> IN PROGRESS <--

@@ -760,27 +760,10 @@ const MouseMaze = () => {
           {/* Game Board */}
           <div className="lg:col-span-2">
             <div className="bg-gray-900/50 backdrop-blur-lg rounded-2xl shadow-2xl p-6 border border-gray-700">
-              {/* Controls */}
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 bg-gray-800/50 rounded-lg px-4 py-2">
-                  <label className="text-sm text-gray-300 font-medium">Speed:</label>
-                  <input
-                    type="range"
-                    min="500"
-                    max="5000"
-                    step="100"
-                    value={playSpeed}
-                    onChange={(e) => setPlaySpeed(Number(e.target.value))}
-                    className="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                  />
-                  <span className="text-xs text-gray-400 w-12 text-right">
-                    {(playSpeed / 1000).toFixed(1)}s
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex gap-3">
+              {/* Centered Controls */}
+              <div className="flex flex-col items-center gap-4 mb-6">
+                {/* Main Control Buttons */}
+                <div className="flex gap-3 items-center">
                   <button
                     onClick={togglePlay}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg transition-all shadow-lg"
@@ -803,8 +786,6 @@ const MouseMaze = () => {
                     <RotateCcw size={20} />
                     Reset
                   </button>
-                </div>
-                <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowPaths(!showPaths)}
                     className={`p-2 rounded-lg transition-all ${
@@ -815,6 +796,23 @@ const MouseMaze = () => {
                   >
                     <MapPin size={20} />
                   </button>
+                </div>
+                
+                {/* Speed Control */}
+                <div className="flex items-center gap-3 bg-gray-800/50 rounded-lg px-6 py-3">
+                  <label className="text-sm text-gray-300 font-medium">Speed:</label>
+                  <input
+                    type="range"
+                    min="500"
+                    max="5000"
+                    step="100"
+                    value={playSpeed}
+                    onChange={(e) => setPlaySpeed(Number(e.target.value))}
+                    className="w-48 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                  />
+                  <span className="text-xs text-gray-400 w-12 text-right">
+                    {(playSpeed / 1000).toFixed(1)}s
+                  </span>
                 </div>
               </div>
 
