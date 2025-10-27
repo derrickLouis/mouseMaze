@@ -1,70 +1,73 @@
-# Getting Started with Create React App
+# Strategic Mice Competition
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A React-based game where two AI mice compete to reach cheese using different pathfinding algorithms and sabotage tactics.
 
-## Available Scripts
+## Features
 
-In the project directory, you can run:
+- **Adjustable Maze Sizes**: Choose from 8x8, 10x10, 12x12, or 15x15 mazes
+- **Guaranteed Paths**: All generated mazes ensure both mice can reach the cheese
+- **Multiple Pathfinding Algorithms**: A* Search, Breadth-First Search, Depth-First Search
+- **Strategic Sabotage**: Players can use tokens to modify the maze
+- **Real-time Visualization**: Watch the AI algorithms work with step-by-step visualization
+- **Interactive Controls**: Step-by-step mode, auto-play, and new maze generation
+- **Algorithm Selection**: Choose different algorithms for each mouse
 
-### `npm start`
+## Installation
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+1. Install dependencies:
+```bash
+npm install
+```
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+2. Start the development server:
+```bash
+npm start
+```
 
-### `npm test`
+3. Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## How to Play
 
-### `npm run build`
+1. **Choose Maze Size**: Select from Small (8x8), Medium (10x10), Large (12x12), or Extra Large (15x15)
+2. **Select Algorithms**: Choose pathfinding algorithms for the Red and Blue mice
+3. **Generate New Maze**: Use "New Maze" button to create a fresh maze layout (guaranteed to have paths)
+4. **Start the Game**: Click "Auto Play" to watch the mice compete automatically, or use "Step" for manual control
+5. **Watch the AI**: Observe how each algorithm navigates the maze and makes strategic decisions
+6. **Sabotage**: Mice can use sabotage tokens to block opponents or create new paths
+7. **Win Condition**: First mouse to reach the cheese wins!
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Game Mechanics
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+- **Movement**: Each mouse can move up to 2 steps per turn
+- **Sabotage**: Remove a wall and place it elsewhere (with restrictions)
+- **Strategy**: Mice evaluate whether to move or sabotage based on opponent distance and available tokens
+- **Forced Movement**: If a mouse hasn't moved for 2 turns, it must move
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Technical Details
 
-### `npm run eject`
+- Built with React 18
+- Uses Tailwind CSS for styling
+- Lucide React for icons
+- Real-time pathfinding visualization
+- Responsive design
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Bugs Fixed
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+1. **File Extension**: Fixed missing `.jsx` extension that caused linter errors
+2. **Dependencies**: Added proper `package.json` with all required dependencies
+3. **Import Path Error**: Moved MouseMaze component into `src/` directory to fix React build system import restrictions
+4. **UpdatePaths Bug**: Fixed incorrect parameter passing in `updatePaths` function
+5. **useEffect Dependencies**: Removed `currentPlayer` from dependency array to prevent interval restart issues
+6. **Clean Imports**: Removed unused `useCallback` import
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+## Project Structure
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
-
-### Code Splitting
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
-
-### Analyzing the Bundle Size
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
-
-### Making a Progressive Web App
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
-
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `npm run build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+```
+├── public/
+│   └── index.html
+├── src/
+│   ├── index.js
+│   └── MouseMaze.jsx
+├── package.json
+└── README.md
+```
