@@ -806,8 +806,8 @@ const MouseMaze = () => {
                     min="500"
                     max="5000"
                     step="100"
-                    value={playSpeed}
-                    onChange={(e) => setPlaySpeed(Number(e.target.value))}
+                    value={5500 - playSpeed}
+                    onChange={(e) => setPlaySpeed(5500 - Number(e.target.value))}
                     className="w-48 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                   />
                   <span className="text-xs text-gray-400 w-12 text-right">
