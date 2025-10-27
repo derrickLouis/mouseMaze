@@ -339,7 +339,7 @@ const MouseMaze = () => {
         }
       }
     }
-
+   
     return null;
   };
 
@@ -690,7 +690,7 @@ const MouseMaze = () => {
         }
       }
     }
-
+   
     let bestOption = null;
     let bestScore = -Infinity;
     let evaluationCount = 0;
@@ -843,10 +843,10 @@ const MouseMaze = () => {
     } else {
       // Strategic decision using min-max evaluation
       calcSteps.push(`Step 3: Evaluating all strategic options...`);
-      
+     
       const movementBenefit = myPath ? Math.min(2, myPath.length - 1) : 0;
       calcSteps.push(`Option 1: MOVE - Would advance ${movementBenefit} steps (distance: ${myDist} → ${Math.max(0, myDist - movementBenefit)})`);
-      
+     
       let bestSabotage = null;
       if (tokens > 0) {
         calcSteps.push(`Option 2: SABOTAGE - Analyzing all wall combinations...`);
@@ -867,14 +867,14 @@ const MouseMaze = () => {
       
       if (shouldSabotage) {
         // Execute sabotage
-        const newMaze = maze.map(row => [...row]);
+          const newMaze = maze.map(row => [...row]);
         newMaze[bestSabotage.remove.y][bestSabotage.remove.x] = 0; // Remove wall
         newMaze[bestSabotage.place.y][bestSabotage.place.x] = 1;   // Place wall
-        setMaze(newMaze);
-        
-        setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
-        setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
-        
+          setMaze(newMaze);
+         
+          setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
+          setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
+         
         calcSteps.push(`🎯 DECISION: SABOTAGE - Strategic advantage detected!`);
         calcSteps.push(`  Benefit: ${bestSabotage.reason}`);
         addToLog(`SABOTAGE: Wall (${bestSabotage.remove.x},${bestSabotage.remove.y}) → (${bestSabotage.place.x},${bestSabotage.place.y})`, player);
@@ -965,8 +965,8 @@ const MouseMaze = () => {
       // Currently exploring - different colors for bidirectional search
       if (exploringCell.direction === 'forward') {
         // Forward search - blue/cyan
-        classes = classes.replace('from-gray-50 to-white', 'from-cyan-300 to-blue-400');
-        classes += ' animate-pulse shadow-lg shadow-cyan-500/50 z-20';
+      classes = classes.replace('from-gray-50 to-white', 'from-cyan-300 to-blue-400');
+      classes += ' animate-pulse shadow-lg shadow-cyan-500/50 z-20';
       } else if (exploringCell.direction === 'backward') {
         // Backward search - orange/red
         classes = classes.replace('from-gray-50 to-white', 'from-orange-300 to-red-400');
@@ -988,8 +988,8 @@ const MouseMaze = () => {
         classes += ' opacity-70';
       } else {
         // Default visited (for other algorithms)
-        classes = classes.replace('from-gray-50 to-white', 'from-purple-100 to-purple-200');
-        classes += ' opacity-80';
+      classes = classes.replace('from-gray-50 to-white', 'from-purple-100 to-purple-200');
+      classes += ' opacity-80';
       }
     } else if (isThinking) {
       // Final path consideration
@@ -1042,7 +1042,7 @@ const MouseMaze = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-8 overflow-x-hidden" style={{ minHeight: '100vh' }}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">

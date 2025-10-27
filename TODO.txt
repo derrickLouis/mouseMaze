@@ -7,4 +7,4 @@
 - Understand (FORCED TO MOVE) Indicator ✓ COMPLETED [Move after sabotage]
 - Modularize Code --> IN PROGRESS <--
 - Fix BiDirectional Visualization ✓ COMPLETED
-- Fix white space on scroll
+- Fix white space on scroll ✓ COMPLETED
