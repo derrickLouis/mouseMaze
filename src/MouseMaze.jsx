@@ -777,16 +777,6 @@ const MouseMaze = () => {
                     {(playSpeed / 1000).toFixed(1)}s
                   </span>
                 </div>
-                <button
-                  onClick={() => setShowPaths(!showPaths)}
-                  className={`p-2 rounded-lg transition-all ${
-                    showPaths
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-gray-400'
-                  }`}
-                >
-                  <MapPin size={20} />
-                </button>
               </div>
 
               <div className="flex justify-between items-center mb-6">

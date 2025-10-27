@@ -1,5 +1,5 @@
 - Fix BiDirectional Visualization and sabotage factor
-- Get Rid of Duplicate Visualization Toggle
+- Get Rid of Duplicate Visualization Toggle ✓ COMPLETED
 - Implement maze randomizer button
 - Implement smarter sabotage (remove to help, place to hurt)
 - Add Better Mice Images
