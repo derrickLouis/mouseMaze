@@ -459,56 +459,113 @@ const MouseMaze = () => {
     return steps;
   };
 
-  const calculateSabotageValue = (player, myDist, opponentDist, opponentPath, tokens) => {
-    let sabotageReasons = [];
-    let totalValue = 0;
-   
-    // Opponent is ahead - CRITICAL
-    if (opponentDist < myDist && opponentDist <= 3) {
-      totalValue += 50;
-      sabotageReasons.push(`Opponent ahead by ${myDist - opponentDist} steps`);
-    }
-   
-    // Opponent very close to winning - DESPERATE
-    if (opponentDist <= 2) {
-      totalValue += 80;
-      sabotageReasons.push(`Opponent ${opponentDist} steps from winning!`);
-    }
-   
-    // I'm much further behind - BLOCKING STRATEGY
-    if (myDist > opponentDist + 3) {
-      totalValue += 30;
-      sabotageReasons.push(`Far behind, must block opponent`);
-    }
-   
-    // Endgame with tokens remaining - USE OR LOSE
-    if (myDist <= 5 && opponentDist <= 5 && tokens >= 2) {
-      totalValue += 25;
-      sabotageReasons.push(`Endgame - use remaining tokens`);
-    }
-   
-    // Can create significant delay
-    if (opponentPath && opponentPath.length > 2) {
-      totalValue += 40;
-      sabotageReasons.push(`Can block opponent's main path`);
-    }
-   
-    // Algorithm-specific targeting
+  const evaluateAllSabotageOptions = (player, myPos, opponentPos, myCurrentDist, opponentCurrentDist, tokens) => {
+    if (tokens <= 0) return null;
+
+    const algorithm = player === 'red' ? redAlgorithm : blueAlgorithm;
     const opponentAlgorithm = player === 'red' ? blueAlgorithm : redAlgorithm;
-    if (opponentAlgorithm === 'astar' && opponentPath) {
-      totalValue += 20;
-      sabotageReasons.push(`Targeting predictable A* path`);
-    } else if (opponentAlgorithm === 'dfs') {
-      totalValue -= 15;
+    
+    // Find all removable walls (excluding borders)
+    const removableWalls = [];
+    for (let y = 1; y < 9; y++) {
+      for (let x = 1; x < 9; x++) {
+        if (maze[y][x] === 1) {
+          removableWalls.push({ x, y });
+        }
+      }
     }
-   
-    const shouldSabotage = totalValue >= 40;
-   
-    return {
-      shouldSabotage,
-      value: totalValue,
-      reason: sabotageReasons.join(', ')
-    };
+
+    // Find all valid placement positions (empty cells, not on mice or cheese)
+    const validPlacements = [];
+    for (let y = 1; y < 9; y++) {
+      for (let x = 1; x < 9; x++) {
+        if (maze[y][x] === 0 &&
+            !(x === myPos.x && y === myPos.y) &&
+            !(x === opponentPos.x && y === opponentPos.y) &&
+            !(x === cheesePos.x && y === cheesePos.y)) {
+          validPlacements.push({ x, y });
+        }
+      }
+    }
+
+    let bestOption = null;
+    let bestScore = -Infinity;
+    let evaluationCount = 0;
+    const maxEvaluations = 200; // Performance limit
+
+    // Evaluate every combination of remove + place
+    for (let removeWall of removableWalls) {
+      for (let placePos of validPlacements) {
+        if (evaluationCount >= maxEvaluations) break;
+        
+        // Create test maze
+        const testMaze = maze.map(row => [...row]);
+        testMaze[removeWall.y][removeWall.x] = 0; // Remove wall
+        testMaze[placePos.y][placePos.x] = 1;     // Place wall
+        
+        // Ensure both mice can still reach cheese
+        const myNewPath = findPath(myPos, cheesePos, algorithm, testMaze);
+        const opponentNewPath = findPath(opponentPos, cheesePos, opponentAlgorithm, testMaze);
+        
+        if (!myNewPath || !opponentNewPath) continue; // Skip if blocks either mouse completely
+        
+        const myNewDist = myNewPath.length - 1;
+        const opponentNewDist = opponentNewPath.length - 1;
+        
+        // Calculate benefits
+        const selfBenefit = myCurrentDist - myNewDist; // Positive = shorter path for me
+        const opponentHarm = opponentNewDist - opponentCurrentDist; // Positive = longer path for opponent
+        
+        // Algorithm-specific weighting
+        let algorithmBonus = 0;
+        if (opponentAlgorithm === 'astar') {
+          algorithmBonus = 2; // A* is predictable, easier to sabotage
+        } else if (opponentAlgorithm === 'dfs') {
+          algorithmBonus = -1; // DFS is unpredictable, harder to sabotage effectively
+        }
+        
+        // Strategic context bonuses
+        let contextBonus = 0;
+        if (opponentCurrentDist <= 3) contextBonus += 5; // Opponent close to winning
+        if (myCurrentDist > opponentCurrentDist + 2) contextBonus += 3; // I'm behind
+        if (tokens >= 2 && myCurrentDist <= 6) contextBonus += 2; // Endgame with tokens
+        
+        // Min-max score: prioritize self-help, then opponent-harm
+        const score = (selfBenefit * 3) + (opponentHarm * 2) + algorithmBonus + contextBonus;
+        
+        if (score > bestScore) {
+          bestScore = score;
+          bestOption = {
+            remove: removeWall,
+            place: placePos,
+            score: score,
+            selfBenefit: selfBenefit,
+            opponentHarm: opponentHarm,
+            myNewDist: myNewDist,
+            opponentNewDist: opponentNewDist,
+            reason: `Self: ${selfBenefit > 0 ? '+' : ''}${selfBenefit}, Opponent: ${opponentHarm > 0 ? '+' : ''}${opponentHarm}`
+          };
+        }
+        
+        evaluationCount++;
+      }
+      if (evaluationCount >= maxEvaluations) break;
+    }
+
+    return bestOption;
+  };
+
+  const shouldSabotageOverMove = (sabotageOption, movementBenefit, player) => {
+    if (!sabotageOption) return false;
+    
+    // Movement benefit: how much closer to cheese we get by moving
+    const moveAdvantage = Math.min(2, movementBenefit); // Max 2 steps per turn
+    
+    // Sabotage total benefit
+    const sabotageAdvantage = sabotageOption.selfBenefit + (sabotageOption.opponentHarm * 0.8);
+    
+    // Only sabotage if it provides more total strategic value than moving
+    return sabotageAdvantage > moveAdvantage + 1; // +1 threshold for move preference
   };
 
   const validateSabotageAction = (removePos, placePos, testMaze) => {
@@ -525,72 +582,7 @@ const MouseMaze = () => {
     return redPath !== null && bluePath !== null;
   };
 
-  const getStrategicSabotageAction = (opponentPath) => {
-    // Find walls that can be removed
-    const removableWalls = [];
-    for (let y = 1; y < 9; y++) {
-      for (let x = 1; x < 9; x++) {
-        if (maze[y][x] === 1) {
-          removableWalls.push({ x, y });
-        }
-      }
-    }
-   
-    if (removableWalls.length === 0 || !opponentPath || opponentPath.length <= 1) {
-      return null;
-    }
-   
-    // Target opponent's path
-    const targetPositions = opponentPath.slice(1, Math.min(4, opponentPath.length));
-   
-    // Try each combination and validate it doesn't block all paths
-    for (let removeWall of removableWalls.slice(0, 10)) {
-      for (let targetPos of targetPositions) {
-        if (maze[targetPos.y][targetPos.x] === 0 &&
-            !(targetPos.x === redPos.x && targetPos.y === redPos.y) &&
-            !(targetPos.x === bluePos.x && targetPos.y === bluePos.y) &&
-            !(targetPos.x === cheesePos.x && targetPos.y === cheesePos.y)) {
-         
-          // Validate this sabotage doesn't completely block either mouse
-          if (validateSabotageAction(removeWall, targetPos, maze)) {
-            return {
-              type: 'sabotage',
-              remove: removeWall,
-              place: targetPos
-            };
-          }
-        }
-      }
-    }
-   
-    // If no strategic placement works, try random valid placements
-    const validPlacements = [];
-    for (let y = 1; y < 9; y++) {
-      for (let x = 1; x < 9; x++) {
-        if (maze[y][x] === 0 &&
-            !(x === redPos.x && y === redPos.y) &&
-            !(x === bluePos.x && y === bluePos.y) &&
-            !(x === cheesePos.x && y === cheesePos.y)) {
-          validPlacements.push({ x, y });
-        }
-      }
-    }
-   
-    // Shuffle and try random combinations
-    for (let removeWall of removableWalls) {
-      for (let placePos of validPlacements) {
-        if (validateSabotageAction(removeWall, placePos, maze)) {
-          return {
-            type: 'sabotage',
-            remove: removeWall,
-            place: placePos
-          };
-        }
-      }
-    }
-   
-    return null;
-  };
+  // Legacy function removed - replaced by evaluateAllSabotageOptions
 
   const makeMove = async () => {
     if (gameOver) return;
@@ -646,34 +638,44 @@ const MouseMaze = () => {
         }
       }
     } else {
-      // Strategic decision
-      const sabotageValue = calculateSabotageValue(player, myDist, opponentDist, opponentPath, tokens);
-     
-      calcSteps.push(`Option 1: MOVE - Would advance ${Math.min(2, myPath ? myPath.length - 1 : 0)} steps`);
-     
+      // Strategic decision using min-max evaluation
+      calcSteps.push(`Step 3: Evaluating all strategic options...`);
+      
+      const movementBenefit = myPath ? Math.min(2, myPath.length - 1) : 0;
+      calcSteps.push(`Option 1: MOVE - Would advance ${movementBenefit} steps (distance: ${myDist} → ${Math.max(0, myDist - movementBenefit)})`);
+      
+      let bestSabotage = null;
       if (tokens > 0) {
-        calcSteps.push(`Option 2: SABOTAGE - Analyzing strategic value...`);
-        calcSteps.push(`  Sabotage value: ${sabotageValue.value} (threshold: 40)`);
-        if (sabotageValue.reason) {
-          calcSteps.push(`  Reasons: ${sabotageValue.reason}`);
+        calcSteps.push(`Option 2: SABOTAGE - Analyzing all wall combinations...`);
+        bestSabotage = evaluateAllSabotageOptions(player, myPos, opponentPos, myDist, opponentDist, tokens);
+        
+        if (bestSabotage) {
+          calcSteps.push(`  Best sabotage found: ${bestSabotage.reason}`);
+          calcSteps.push(`  Remove wall (${bestSabotage.remove.x},${bestSabotage.remove.y}), place at (${bestSabotage.place.x},${bestSabotage.place.y})`);
+          calcSteps.push(`  My distance: ${myDist} → ${bestSabotage.myNewDist}, Opponent: ${opponentDist} → ${bestSabotage.opponentNewDist}`);
+          calcSteps.push(`  Total strategic value: ${bestSabotage.score.toFixed(1)}`);
+        } else {
+          calcSteps.push(`  No beneficial sabotage options found`);
         }
       }
-     
-      if (tokens > 0 && sabotageValue.shouldSabotage) {
+      
+      // Decision: Sabotage vs Move
+      const shouldSabotage = bestSabotage && shouldSabotageOverMove(bestSabotage, movementBenefit, player);
+      
+      if (shouldSabotage) {
         // Execute sabotage
-        const sabotageAction = getStrategicSabotageAction(opponentPath);
-        if (sabotageAction) {
-          const newMaze = maze.map(row => [...row]);
-          newMaze[sabotageAction.remove.y][sabotageAction.remove.x] = 0;
-          newMaze[sabotageAction.place.y][sabotageAction.place.x] = 1;
-          setMaze(newMaze);
-         
-          setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
-          setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
-         
-          calcSteps.push(`🎯 DECISION: SABOTAGE (${sabotageValue.reason})`);
-          addToLog(`SABOTAGE: Wall (${sabotageAction.remove.x},${sabotageAction.remove.y}) → (${sabotageAction.place.x},${sabotageAction.place.y})`, player);
-        }
+        const newMaze = maze.map(row => [...row]);
+        newMaze[bestSabotage.remove.y][bestSabotage.remove.x] = 0; // Remove wall
+        newMaze[bestSabotage.place.y][bestSabotage.place.x] = 1;   // Place wall
+        setMaze(newMaze);
+        
+        setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
+        setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
+        
+        calcSteps.push(`🎯 DECISION: SABOTAGE - Strategic advantage detected!`);
+        calcSteps.push(`  Benefit: ${bestSabotage.reason}`);
+        addToLog(`SABOTAGE: Wall (${bestSabotage.remove.x},${bestSabotage.remove.y}) → (${bestSabotage.place.x},${bestSabotage.place.y})`, player);
+        addToLog(`Strategic benefit: ${bestSabotage.reason}`, player);
       } else if (myPath && myPath.length > 1) {
         // Move
         const steps = Math.min(2, myPath.length - 1);
@@ -686,7 +688,8 @@ const MouseMaze = () => {
         }
        
         setTurnsSinceMove(prev => ({ ...prev, [player]: 0 }));
-        calcSteps.push(`🏃 DECISION: MOVE (Distance=${myDist}, Opponent=${opponentDist})`);
+        calcSteps.push(`🏃 DECISION: MOVE - Movement provides better strategic value`);
+        calcSteps.push(`  Distance: ${myDist} → ${Math.max(0, myDist - steps)}, Opponent: ${opponentDist}`);
         addToLog(`Moved to (${newPos.x}, ${newPos.y})`, player);
        
         if (newPos.x === cheesePos.x && newPos.y === cheesePos.y) {
