@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, ChevronRight, Brain, Zap, Activity, MapPin } from 'lucide-react';
+import { Play, Pause, RotateCcw, ChevronRight, Brain, Zap, Activity, MapPin, Shuffle } from 'lucide-react';
 
 const MouseMaze = () => {
   const [maze, setMaze] = useState([]);
@@ -30,6 +30,51 @@ const MouseMaze = () => {
     initializeMaze();
   }, []);
 
+  const generateRandomMaze = () => {
+    // Create maze with walls around border
+    const newMaze = Array(10).fill().map((_, y) => 
+      Array(10).fill().map((_, x) => {
+        // Border walls
+        if (x === 0 || x === 9 || y === 0 || y === 9) return 1;
+        // Random interior with 35% wall density
+        return Math.random() < 0.35 ? 1 : 0;
+      })
+    );
+
+    // Ensure critical positions are open
+    const redStart = { x: 1, y: 1 };
+    const blueStart = { x: 8, y: 8 };
+    const cheese = { x: 5, y: 4 };
+
+    newMaze[redStart.y][redStart.x] = 0;
+    newMaze[blueStart.y][blueStart.x] = 0;
+    newMaze[cheese.y][cheese.x] = 0;
+
+    // Ensure paths exist by doing a connectivity check and opening walls if needed
+    const ensureConnectivity = (maze, from, to) => {
+      const path = findPathBFS(from, to, maze);
+      if (!path) {
+        // Create a simple path by opening walls
+        let current = { ...from };
+        while (current.x !== to.x || current.y !== to.y) {
+          // Move toward target
+          if (current.x < to.x) current.x++;
+          else if (current.x > to.x) current.x--;
+          else if (current.y < to.y) current.y++;
+          else if (current.y > to.y) current.y--;
+          
+          maze[current.y][current.x] = 0; // Open the path
+        }
+      }
+    };
+
+    // Ensure both mice can reach cheese
+    ensureConnectivity(newMaze, redStart, cheese);
+    ensureConnectivity(newMaze, blueStart, cheese);
+
+    return newMaze;
+  };
+
   const initializeMaze = () => {
     const initialMaze = [
       [1,1,1,1,1,1,1,1,1,1],
@@ -45,6 +90,29 @@ const MouseMaze = () => {
     ];
     setMaze(initialMaze);
     updatePaths(initialMaze, { x: 1, y: 1 }, { x: 8, y: 8 });
+  };
+
+  const randomizeMaze = () => {
+    const newMaze = generateRandomMaze();
+    setMaze(newMaze);
+    updatePaths(newMaze, { x: 1, y: 1 }, { x: 8, y: 8 });
+    
+    // Reset game state for new maze
+    setRedPos({ x: 1, y: 1 });
+    setBluePos({ x: 8, y: 8 });
+    setCurrentPlayer('red');
+    setTurn(1);
+    setSabotageTokens({ red: 3, blue: 3 });
+    setTurnsSinceMove({ red: 0, blue: 0 });
+    setGameOver(false);
+    setWinner(null);
+    setIsPlaying(false);
+    setGameLog([]);
+    setCalculationSteps(['New maze generated - Let the strategic competition begin!']);
+    setThinkingCells([]);
+    if (playIntervalRef.current) {
+      clearInterval(playIntervalRef.current);
+    }
   };
 
   const resetGame = () => {
@@ -191,6 +259,90 @@ const MouseMaze = () => {
     return null;
   };
 
+  const findPathBidirectional = (start, goal, currentMaze) => {
+    if (start.x === goal.x && start.y === goal.y) {
+      return [start];
+    }
+
+    // Two BFS queues - forward and backward
+    const forwardQueue = [{ ...start, path: [start] }];
+    const backwardQueue = [{ ...goal, path: [goal] }];
+    
+    // Visited sets for each direction
+    const forwardVisited = new Map();
+    const backwardVisited = new Map();
+    
+    forwardVisited.set(`${start.x},${start.y}`, { ...start, path: [start] });
+    backwardVisited.set(`${goal.x},${goal.y}`, { ...goal, path: [goal] });
+
+    const directions = [
+      { x: 0, y: 1 }, { x: 1, y: 0 },
+      { x: 0, y: -1 }, { x: -1, y: 0 }
+    ];
+
+    while (forwardQueue.length > 0 || backwardQueue.length > 0) {
+      // Expand forward search
+      if (forwardQueue.length > 0) {
+        const current = forwardQueue.shift();
+        const currentKey = `${current.x},${current.y}`;
+        
+        // Check if backward search has visited this node
+        if (backwardVisited.has(currentKey)) {
+          const backwardNode = backwardVisited.get(currentKey);
+          // Combine paths: forward path + reversed backward path
+          const combinedPath = [
+            ...current.path,
+            ...backwardNode.path.slice(0, -1).reverse()
+          ];
+          return combinedPath;
+        }
+
+        // Expand neighbors
+        for (let dir of directions) {
+          const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
+          const neighborKey = `${neighbor.x},${neighbor.y}`;
+          
+          if (isValidMove(neighbor, currentMaze) && !forwardVisited.has(neighborKey)) {
+            const neighborNode = { ...neighbor, path: [...current.path, neighbor] };
+            forwardVisited.set(neighborKey, neighborNode);
+            forwardQueue.push(neighborNode);
+          }
+        }
+      }
+
+      // Expand backward search
+      if (backwardQueue.length > 0) {
+        const current = backwardQueue.shift();
+        const currentKey = `${current.x},${current.y}`;
+        
+        // Check if forward search has visited this node
+        if (forwardVisited.has(currentKey)) {
+          const forwardNode = forwardVisited.get(currentKey);
+          // Combine paths: forward path + reversed backward path
+          const combinedPath = [
+            ...forwardNode.path,
+            ...current.path.slice(0, -1).reverse()
+          ];
+          return combinedPath;
+        }
+
+        // Expand neighbors
+        for (let dir of directions) {
+          const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
+          const neighborKey = `${neighbor.x},${neighbor.y}`;
+          
+          if (isValidMove(neighbor, currentMaze) && !backwardVisited.has(neighborKey)) {
+            const neighborNode = { ...neighbor, path: [...current.path, neighbor] };
+            backwardVisited.set(neighborKey, neighborNode);
+            backwardQueue.push(neighborNode);
+          }
+        }
+      }
+    }
+   
+    return null;
+  };
+
   const findPath = (start, goal, algorithm, currentMaze) => {
     switch(algorithm) {
       case 'astar':
@@ -200,8 +352,7 @@ const MouseMaze = () => {
       case 'dfs':
         return findPathDFS(start, goal, currentMaze);
       case 'bidirectional':
-        // Fallback to A* for bidirectional
-        return findPathAStar(start, goal, currentMaze);
+        return findPathBidirectional(start, goal, currentMaze);
       default:
         return findPathBFS(start, goal, currentMaze);
     }
@@ -231,6 +382,14 @@ const MouseMaze = () => {
     // Clear previous visualization
     setExploringCells([]);
     setVisitedCells([]);
+    
+    // Calculate visualization delay based on playSpeed
+    // playSpeed: 500ms (fast) to 5000ms (slow)
+    // Visualization delays: 20ms (fast) to 200ms (slow)
+    const getVisualizationDelay = (baseDelay = 100) => {
+      const speedFactor = playSpeed / 1000; // 0.5 to 5.0
+      return Math.max(20, Math.min(200, baseDelay * speedFactor * 0.4));
+    };
    
     if (algorithm === 'astar') {
       steps.push(`A* Search: Exploring with heuristic guidance...`);
@@ -252,7 +411,7 @@ const MouseMaze = () => {
           setVisitedCells([...visited]);
           setExploringCells([current]);
           steps.push(`  Exploring (${current.x},${current.y}) - f=${current.f.toFixed(1)}`);
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
          
           if (current.x === goal.x && current.y === goal.y) {
             steps.push(`✅ Path found! Length: ${current.path.length - 1} steps`);
@@ -277,7 +436,7 @@ const MouseMaze = () => {
          
           // Show cells being considered
           setExploringCells([...exploring]);
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(50)));
           exploring.length = 0;
          
           iterations++;
@@ -300,7 +459,7 @@ const MouseMaze = () => {
         if (current.level > currentLevel) {
           currentLevel = current.level;
           setExploringCells([...levelNodes]);
-          await new Promise(resolve => setTimeout(resolve, 150));
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(150)));
           levelNodes = [];
         }
        
@@ -329,7 +488,7 @@ const MouseMaze = () => {
         }
        
         iterations++;
-        await new Promise(resolve => setTimeout(resolve, 60));
+        await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(60)));
       }
     } else if (algorithm === 'dfs') {
       steps.push(`DFS: Deep exploration with backtracking...`);
@@ -349,7 +508,7 @@ const MouseMaze = () => {
         setVisitedCells([...visited]);
         setExploringCells([current]);
         steps.push(`  Depth ${current.depth}: Exploring (${current.x},${current.y})`);
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
        
         if (current.x === goal.x && current.y === goal.y) {
           steps.push(`✅ Path found! Length: ${current.path.length - 1} steps (may not be shortest)`);
@@ -377,6 +536,118 @@ const MouseMaze = () => {
        
         iterations++;
       }
+    } else if (algorithm === 'bidirectional') {
+      steps.push(`Bidirectional Search: Expanding from both start and goal simultaneously...`);
+      
+      // Two BFS queues - forward and backward
+      const forwardQueue = [{ ...start, path: [start], level: 0, direction: 'forward' }];
+      const backwardQueue = [{ ...goal, path: [goal], level: 0, direction: 'backward' }];
+      
+      // Visited sets for each direction
+      const forwardVisited = new Map();
+      const backwardVisited = new Map();
+      
+      forwardVisited.set(`${start.x},${start.y}`, { ...start, path: [start] });
+      backwardVisited.set(`${goal.x},${goal.y}`, { ...goal, path: [goal] });
+
+      const directions = [
+        { x: 0, y: 1 }, { x: 1, y: 0 },
+        { x: 0, y: -1 }, { x: -1, y: 0 }
+      ];
+
+      let iterations = 0;
+      let forwardLevel = 0;
+      let backwardLevel = 0;
+      let meetingPoint = null;
+
+      while ((forwardQueue.length > 0 || backwardQueue.length > 0) && iterations < 25) {
+        
+        // Expand forward search
+        if (forwardQueue.length > 0) {
+          const current = forwardQueue.shift();
+          const currentKey = `${current.x},${current.y}`;
+          
+          // Update visualization for forward search
+          setVisitedCells(prev => [...prev, { ...current, direction: 'forward' }]);
+          setExploringCells([{ ...current, direction: 'forward' }]);
+          
+          if (current.level > forwardLevel) {
+            forwardLevel = current.level;
+            steps.push(`  Forward search level ${forwardLevel}: exploring from start`);
+          }
+          
+          // Check if backward search has visited this node
+          if (backwardVisited.has(currentKey)) {
+            const backwardNode = backwardVisited.get(currentKey);
+            steps.push(`🎯 MEETING POINT FOUND at (${current.x},${current.y})!`);
+            steps.push(`  Forward path length: ${current.path.length - 1}`);
+            steps.push(`  Backward path length: ${backwardNode.path.length - 1}`);
+            meetingPoint = { forward: current, backward: backwardNode };
+            break;
+          }
+
+          // Expand neighbors
+          for (let dir of directions) {
+            const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
+            const neighborKey = `${neighbor.x},${neighbor.y}`;
+            
+            if (isValidMove(neighbor, maze) && !forwardVisited.has(neighborKey)) {
+              const neighborNode = { ...neighbor, path: [...current.path, neighbor], level: current.level + 1, direction: 'forward' };
+              forwardVisited.set(neighborKey, neighborNode);
+              forwardQueue.push(neighborNode);
+            }
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
+        }
+
+        // Expand backward search
+        if (backwardQueue.length > 0 && !meetingPoint) {
+          const current = backwardQueue.shift();
+          const currentKey = `${current.x},${current.y}`;
+          
+          // Update visualization for backward search
+          setVisitedCells(prev => [...prev, { ...current, direction: 'backward' }]);
+          setExploringCells([{ ...current, direction: 'backward' }]);
+          
+          if (current.level > backwardLevel) {
+            backwardLevel = current.level;
+            steps.push(`  Backward search level ${backwardLevel}: exploring from goal`);
+          }
+          
+          // Check if forward search has visited this node
+          if (forwardVisited.has(currentKey)) {
+            const forwardNode = forwardVisited.get(currentKey);
+            steps.push(`🎯 MEETING POINT FOUND at (${current.x},${current.y})!`);
+            steps.push(`  Forward path length: ${forwardNode.path.length - 1}`);
+            steps.push(`  Backward path length: ${current.path.length - 1}`);
+            meetingPoint = { forward: forwardNode, backward: current };
+            break;
+          }
+
+          // Expand neighbors
+          for (let dir of directions) {
+            const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
+            const neighborKey = `${neighbor.x},${neighbor.y}`;
+            
+            if (isValidMove(neighbor, maze) && !backwardVisited.has(neighborKey)) {
+              const neighborNode = { ...neighbor, path: [...current.path, neighbor], level: current.level + 1, direction: 'backward' };
+              backwardVisited.set(neighborKey, neighborNode);
+              backwardQueue.push(neighborNode);
+            }
+          }
+          
+          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
+        }
+        
+        iterations++;
+      }
+      
+      if (meetingPoint) {
+        const totalLength = meetingPoint.forward.path.length + meetingPoint.backward.path.length - 2;
+        steps.push(`✅ Optimal path found! Total length: ${totalLength} steps`);
+        steps.push(`  Bidirectional search explored fewer nodes than unidirectional!`);
+      }
     }
    
     // Clear exploration visualization after a delay
@@ -391,56 +662,113 @@ const MouseMaze = () => {
     return steps;
   };
 
-  const calculateSabotageValue = (player, myDist, opponentDist, opponentPath, tokens) => {
-    let sabotageReasons = [];
-    let totalValue = 0;
-   
-    // Opponent is ahead - CRITICAL
-    if (opponentDist < myDist && opponentDist <= 3) {
-      totalValue += 50;
-      sabotageReasons.push(`Opponent ahead by ${myDist - opponentDist} steps`);
-    }
-   
-    // Opponent very close to winning - DESPERATE
-    if (opponentDist <= 2) {
-      totalValue += 80;
-      sabotageReasons.push(`Opponent ${opponentDist} steps from winning!`);
-    }
-   
-    // I'm much further behind - BLOCKING STRATEGY
-    if (myDist > opponentDist + 3) {
-      totalValue += 30;
-      sabotageReasons.push(`Far behind, must block opponent`);
-    }
-   
-    // Endgame with tokens remaining - USE OR LOSE
-    if (myDist <= 5 && opponentDist <= 5 && tokens >= 2) {
-      totalValue += 25;
-      sabotageReasons.push(`Endgame - use remaining tokens`);
-    }
-   
-    // Can create significant delay
-    if (opponentPath && opponentPath.length > 2) {
-      totalValue += 40;
-      sabotageReasons.push(`Can block opponent's main path`);
-    }
-   
-    // Algorithm-specific targeting
+  const evaluateAllSabotageOptions = (player, myPos, opponentPos, myCurrentDist, opponentCurrentDist, tokens) => {
+    if (tokens <= 0) return null;
+
+    const algorithm = player === 'red' ? redAlgorithm : blueAlgorithm;
     const opponentAlgorithm = player === 'red' ? blueAlgorithm : redAlgorithm;
-    if (opponentAlgorithm === 'astar' && opponentPath) {
-      totalValue += 20;
-      sabotageReasons.push(`Targeting predictable A* path`);
-    } else if (opponentAlgorithm === 'dfs') {
-      totalValue -= 15;
+    
+    // Find all removable walls (excluding borders)
+    const removableWalls = [];
+    for (let y = 1; y < 9; y++) {
+      for (let x = 1; x < 9; x++) {
+        if (maze[y][x] === 1) {
+          removableWalls.push({ x, y });
+        }
+      }
+    }
+
+    // Find all valid placement positions (empty cells, not on mice or cheese)
+    const validPlacements = [];
+    for (let y = 1; y < 9; y++) {
+      for (let x = 1; x < 9; x++) {
+        if (maze[y][x] === 0 &&
+            !(x === myPos.x && y === myPos.y) &&
+            !(x === opponentPos.x && y === opponentPos.y) &&
+            !(x === cheesePos.x && y === cheesePos.y)) {
+          validPlacements.push({ x, y });
+        }
+      }
     }
    
-    const shouldSabotage = totalValue >= 40;
-   
-    return {
-      shouldSabotage,
-      value: totalValue,
-      reason: sabotageReasons.join(', ')
-    };
+    let bestOption = null;
+    let bestScore = -Infinity;
+    let evaluationCount = 0;
+    const maxEvaluations = 200; // Performance limit
+
+    // Evaluate every combination of remove + place
+    for (let removeWall of removableWalls) {
+      for (let placePos of validPlacements) {
+        if (evaluationCount >= maxEvaluations) break;
+        
+        // Create test maze
+        const testMaze = maze.map(row => [...row]);
+        testMaze[removeWall.y][removeWall.x] = 0; // Remove wall
+        testMaze[placePos.y][placePos.x] = 1;     // Place wall
+        
+        // Ensure both mice can still reach cheese
+        const myNewPath = findPath(myPos, cheesePos, algorithm, testMaze);
+        const opponentNewPath = findPath(opponentPos, cheesePos, opponentAlgorithm, testMaze);
+        
+        if (!myNewPath || !opponentNewPath) continue; // Skip if blocks either mouse completely
+        
+        const myNewDist = myNewPath.length - 1;
+        const opponentNewDist = opponentNewPath.length - 1;
+        
+        // Calculate benefits
+        const selfBenefit = myCurrentDist - myNewDist; // Positive = shorter path for me
+        const opponentHarm = opponentNewDist - opponentCurrentDist; // Positive = longer path for opponent
+        
+        // Algorithm-specific weighting
+        let algorithmBonus = 0;
+        if (opponentAlgorithm === 'astar') {
+          algorithmBonus = 2; // A* is predictable, easier to sabotage
+        } else if (opponentAlgorithm === 'dfs') {
+          algorithmBonus = -1; // DFS is unpredictable, harder to sabotage effectively
+        }
+        
+        // Strategic context bonuses
+        let contextBonus = 0;
+        if (opponentCurrentDist <= 3) contextBonus += 5; // Opponent close to winning
+        if (myCurrentDist > opponentCurrentDist + 2) contextBonus += 3; // I'm behind
+        if (tokens >= 2 && myCurrentDist <= 6) contextBonus += 2; // Endgame with tokens
+        
+        // Min-max score: prioritize self-help, then opponent-harm
+        const score = (selfBenefit * 3) + (opponentHarm * 2) + algorithmBonus + contextBonus;
+        
+        if (score > bestScore) {
+          bestScore = score;
+          bestOption = {
+            remove: removeWall,
+            place: placePos,
+            score: score,
+            selfBenefit: selfBenefit,
+            opponentHarm: opponentHarm,
+            myNewDist: myNewDist,
+            opponentNewDist: opponentNewDist,
+            reason: `Self: ${selfBenefit > 0 ? '+' : ''}${selfBenefit}, Opponent: ${opponentHarm > 0 ? '+' : ''}${opponentHarm}`
+          };
+        }
+        
+        evaluationCount++;
+      }
+      if (evaluationCount >= maxEvaluations) break;
+    }
+
+    return bestOption;
+  };
+
+  const shouldSabotageOverMove = (sabotageOption, movementBenefit, player) => {
+    if (!sabotageOption) return false;
+    
+    // Movement benefit: how much closer to cheese we get by moving
+    const moveAdvantage = Math.min(2, movementBenefit); // Max 2 steps per turn
+    
+    // Sabotage total benefit
+    const sabotageAdvantage = sabotageOption.selfBenefit + (sabotageOption.opponentHarm * 0.8);
+    
+    // Only sabotage if it provides more total strategic value than moving
+    return sabotageAdvantage > moveAdvantage + 1; // +1 threshold for move preference
   };
 
   const validateSabotageAction = (removePos, placePos, testMaze) => {
@@ -457,72 +785,7 @@ const MouseMaze = () => {
     return redPath !== null && bluePath !== null;
   };
 
-  const getStrategicSabotageAction = (opponentPath) => {
-    // Find walls that can be removed
-    const removableWalls = [];
-    for (let y = 1; y < 9; y++) {
-      for (let x = 1; x < 9; x++) {
-        if (maze[y][x] === 1) {
-          removableWalls.push({ x, y });
-        }
-      }
-    }
-   
-    if (removableWalls.length === 0 || !opponentPath || opponentPath.length <= 1) {
-      return null;
-    }
-   
-    // Target opponent's path
-    const targetPositions = opponentPath.slice(1, Math.min(4, opponentPath.length));
-   
-    // Try each combination and validate it doesn't block all paths
-    for (let removeWall of removableWalls.slice(0, 10)) {
-      for (let targetPos of targetPositions) {
-        if (maze[targetPos.y][targetPos.x] === 0 &&
-            !(targetPos.x === redPos.x && targetPos.y === redPos.y) &&
-            !(targetPos.x === bluePos.x && targetPos.y === bluePos.y) &&
-            !(targetPos.x === cheesePos.x && targetPos.y === cheesePos.y)) {
-         
-          // Validate this sabotage doesn't completely block either mouse
-          if (validateSabotageAction(removeWall, targetPos, maze)) {
-            return {
-              type: 'sabotage',
-              remove: removeWall,
-              place: targetPos
-            };
-          }
-        }
-      }
-    }
-   
-    // If no strategic placement works, try random valid placements
-    const validPlacements = [];
-    for (let y = 1; y < 9; y++) {
-      for (let x = 1; x < 9; x++) {
-        if (maze[y][x] === 0 &&
-            !(x === redPos.x && y === redPos.y) &&
-            !(x === bluePos.x && y === bluePos.y) &&
-            !(x === cheesePos.x && y === cheesePos.y)) {
-          validPlacements.push({ x, y });
-        }
-      }
-    }
-   
-    // Shuffle and try random combinations
-    for (let removeWall of removableWalls) {
-      for (let placePos of validPlacements) {
-        if (validateSabotageAction(removeWall, placePos, maze)) {
-          return {
-            type: 'sabotage',
-            remove: removeWall,
-            place: placePos
-          };
-        }
-      }
-    }
-   
-    return null;
-  };
+  // Legacy function removed - replaced by evaluateAllSabotageOptions
 
   const makeMove = async () => {
     if (gameOver) return;
@@ -578,34 +841,44 @@ const MouseMaze = () => {
         }
       }
     } else {
-      // Strategic decision
-      const sabotageValue = calculateSabotageValue(player, myDist, opponentDist, opponentPath, tokens);
+      // Strategic decision using min-max evaluation
+      calcSteps.push(`Step 3: Evaluating all strategic options...`);
      
-      calcSteps.push(`Option 1: MOVE - Would advance ${Math.min(2, myPath ? myPath.length - 1 : 0)} steps`);
+      const movementBenefit = myPath ? Math.min(2, myPath.length - 1) : 0;
+      calcSteps.push(`Option 1: MOVE - Would advance ${movementBenefit} steps (distance: ${myDist} → ${Math.max(0, myDist - movementBenefit)})`);
      
+      let bestSabotage = null;
       if (tokens > 0) {
-        calcSteps.push(`Option 2: SABOTAGE - Analyzing strategic value...`);
-        calcSteps.push(`  Sabotage value: ${sabotageValue.value} (threshold: 40)`);
-        if (sabotageValue.reason) {
-          calcSteps.push(`  Reasons: ${sabotageValue.reason}`);
+        calcSteps.push(`Option 2: SABOTAGE - Analyzing all wall combinations...`);
+        bestSabotage = evaluateAllSabotageOptions(player, myPos, opponentPos, myDist, opponentDist, tokens);
+        
+        if (bestSabotage) {
+          calcSteps.push(`  Best sabotage found: ${bestSabotage.reason}`);
+          calcSteps.push(`  Remove wall (${bestSabotage.remove.x},${bestSabotage.remove.y}), place at (${bestSabotage.place.x},${bestSabotage.place.y})`);
+          calcSteps.push(`  My distance: ${myDist} → ${bestSabotage.myNewDist}, Opponent: ${opponentDist} → ${bestSabotage.opponentNewDist}`);
+          calcSteps.push(`  Total strategic value: ${bestSabotage.score.toFixed(1)}`);
+        } else {
+          calcSteps.push(`  No beneficial sabotage options found`);
         }
       }
-     
-      if (tokens > 0 && sabotageValue.shouldSabotage) {
+      
+      // Decision: Sabotage vs Move
+      const shouldSabotage = bestSabotage && shouldSabotageOverMove(bestSabotage, movementBenefit, player);
+      
+      if (shouldSabotage) {
         // Execute sabotage
-        const sabotageAction = getStrategicSabotageAction(opponentPath);
-        if (sabotageAction) {
           const newMaze = maze.map(row => [...row]);
-          newMaze[sabotageAction.remove.y][sabotageAction.remove.x] = 0;
-          newMaze[sabotageAction.place.y][sabotageAction.place.x] = 1;
+        newMaze[bestSabotage.remove.y][bestSabotage.remove.x] = 0; // Remove wall
+        newMaze[bestSabotage.place.y][bestSabotage.place.x] = 1;   // Place wall
           setMaze(newMaze);
          
           setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
           setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
          
-          calcSteps.push(`🎯 DECISION: SABOTAGE (${sabotageValue.reason})`);
-          addToLog(`SABOTAGE: Wall (${sabotageAction.remove.x},${sabotageAction.remove.y}) → (${sabotageAction.place.x},${sabotageAction.place.y})`, player);
-        }
+        calcSteps.push(`🎯 DECISION: SABOTAGE - Strategic advantage detected!`);
+        calcSteps.push(`  Benefit: ${bestSabotage.reason}`);
+        addToLog(`SABOTAGE: Wall (${bestSabotage.remove.x},${bestSabotage.remove.y}) → (${bestSabotage.place.x},${bestSabotage.place.y})`, player);
+        addToLog(`Strategic benefit: ${bestSabotage.reason}`, player);
       } else if (myPath && myPath.length > 1) {
         // Move
         const steps = Math.min(2, myPath.length - 1);
@@ -618,7 +891,8 @@ const MouseMaze = () => {
         }
        
         setTurnsSinceMove(prev => ({ ...prev, [player]: 0 }));
-        calcSteps.push(`🏃 DECISION: MOVE (Distance=${myDist}, Opponent=${opponentDist})`);
+        calcSteps.push(`🏃 DECISION: MOVE - Movement provides better strategic value`);
+        calcSteps.push(`  Distance: ${myDist} → ${Math.max(0, myDist - steps)}, Opponent: ${opponentDist}`);
         addToLog(`Moved to (${newPos.x}, ${newPos.y})`, player);
        
         if (newPos.x === cheesePos.x && newPos.y === cheesePos.y) {
@@ -683,18 +957,40 @@ const MouseMaze = () => {
     }
    
     // Search visualization effects (in order of priority)
-    const isExploring = exploringCells.some(c => c.x === x && c.y === y);
-    const isVisited = visitedCells.some(c => c.x === x && c.y === y);
+    const exploringCell = exploringCells.find(c => c.x === x && c.y === y);
+    const visitedCell = visitedCells.find(c => c.x === x && c.y === y);
     const isThinking = thinkingCells.some(tc => tc.x === x && tc.y === y);
    
-    if (isExploring) {
-      // Currently exploring - bright animation
+    if (exploringCell) {
+      // Currently exploring - different colors for bidirectional search
+      if (exploringCell.direction === 'forward') {
+        // Forward search - blue/cyan
       classes = classes.replace('from-gray-50 to-white', 'from-cyan-300 to-blue-400');
       classes += ' animate-pulse shadow-lg shadow-cyan-500/50 z-20';
-    } else if (isVisited) {
-      // Already visited - softer color
+      } else if (exploringCell.direction === 'backward') {
+        // Backward search - orange/red
+        classes = classes.replace('from-gray-50 to-white', 'from-orange-300 to-red-400');
+        classes += ' animate-pulse shadow-lg shadow-orange-500/50 z-20';
+      } else {
+        // Default exploring (for other algorithms)
+        classes = classes.replace('from-gray-50 to-white', 'from-cyan-300 to-blue-400');
+        classes += ' animate-pulse shadow-lg shadow-cyan-500/50 z-20';
+      }
+    } else if (visitedCell) {
+      // Already visited - different colors for bidirectional search
+      if (visitedCell.direction === 'forward') {
+        // Forward visited - light blue
+        classes = classes.replace('from-gray-50 to-white', 'from-blue-100 to-blue-200');
+        classes += ' opacity-70';
+      } else if (visitedCell.direction === 'backward') {
+        // Backward visited - light orange
+        classes = classes.replace('from-gray-50 to-white', 'from-orange-100 to-orange-200');
+        classes += ' opacity-70';
+      } else {
+        // Default visited (for other algorithms)
       classes = classes.replace('from-gray-50 to-white', 'from-purple-100 to-purple-200');
       classes += ' opacity-80';
+      }
     } else if (isThinking) {
       // Final path consideration
       classes = classes.replace('from-gray-50 to-white', 'from-yellow-100 to-yellow-200');
@@ -746,7 +1042,7 @@ const MouseMaze = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-8">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-8 overflow-x-hidden" style={{ minHeight: '100vh' }}>
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
@@ -760,37 +1056,10 @@ const MouseMaze = () => {
           {/* Game Board */}
           <div className="lg:col-span-2">
             <div className="bg-gray-900/50 backdrop-blur-lg rounded-2xl shadow-2xl p-6 border border-gray-700">
-              {/* Controls */}
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 bg-gray-800/50 rounded-lg px-4 py-2">
-                  <label className="text-sm text-gray-300 font-medium">Speed:</label>
-                  <input
-                    type="range"
-                    min="500"
-                    max="5000"
-                    step="100"
-                    value={playSpeed}
-                    onChange={(e) => setPlaySpeed(Number(e.target.value))}
-                    className="w-32 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                  />
-                  <span className="text-xs text-gray-400 w-12 text-right">
-                    {(playSpeed / 1000).toFixed(1)}s
-                  </span>
-                </div>
-                <button
-                  onClick={() => setShowPaths(!showPaths)}
-                  className={`p-2 rounded-lg transition-all ${
-                    showPaths
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-gray-700 text-gray-400'
-                  }`}
-                >
-                  <MapPin size={20} />
-                </button>
-              </div>
-
-              <div className="flex justify-between items-center mb-6">
-                <div className="flex gap-3">
+              {/* Centered Controls */}
+              <div className="flex flex-col items-center gap-4 mb-6">
+                {/* Main Control Buttons */}
+                <div className="flex gap-3 items-center">
                   <button
                     onClick={togglePlay}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg transition-all shadow-lg"
@@ -813,8 +1082,13 @@ const MouseMaze = () => {
                     <RotateCcw size={20} />
                     Reset
                   </button>
-                </div>
-                <div className="flex items-center gap-2">
+                  <button
+                    onClick={randomizeMaze}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg transition-all shadow-lg"
+                  >
+                    <Shuffle size={20} />
+                    New Maze
+                  </button>
                   <button
                     onClick={() => setShowPaths(!showPaths)}
                     className={`p-2 rounded-lg transition-all ${
@@ -825,6 +1099,23 @@ const MouseMaze = () => {
                   >
                     <MapPin size={20} />
                   </button>
+                </div>
+                
+                {/* Speed Control */}
+                <div className="flex items-center gap-3 bg-gray-800/50 rounded-lg px-6 py-3">
+                  <label className="text-sm text-gray-300 font-medium">Speed:</label>
+                  <input
+                    type="range"
+                    min="500"
+                    max="5000"
+                    step="100"
+                    value={5500 - playSpeed}
+                    onChange={(e) => setPlaySpeed(5500 - Number(e.target.value))}
+                    className="w-48 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                  />
+                  <span className="text-xs text-gray-400 w-12 text-right">
+                    {(playSpeed / 1000).toFixed(1)}s
+                  </span>
                 </div>
               </div>
 

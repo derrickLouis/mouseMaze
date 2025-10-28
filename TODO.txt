@@ -1,8 +1,10 @@
-- Fix BiDirectional Visualization and sabotage factor
-- Get Rid of Duplicate Visualization Toggle
-- Implement maze randomizer button
-- Implement smarter sabotage (remove to help, place to hurt)
+- Fix BiDirectional sabotage factor ✓ COMPLETED
+- Get Rid of Duplicate Visualization Toggle ✓ COMPLETED
+- Implement maze randomizer button ✓ COMPLETED
+- Implement smarter sabotage (remove to help, place to hurt) ✓ COMPLETED
 - Add Better Mice Images
-- Center Controls at top of screen
-- Understand (FORCED TO MOVE) Indicator
+- Center Controls at top of screen ✓ COMPLETED
+- Understand (FORCED TO MOVE) Indicator ✓ COMPLETED [Move after sabotage]
 - Modularize Code --> IN PROGRESS <--
+- Fix BiDirectional Visualization ✓ COMPLETED
+- Fix white space on scroll ✓ COMPLETED
