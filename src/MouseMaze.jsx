@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, ChevronRight, Brain, Zap, Activity, MapPin, Shuffle } from 'lucide-react';
+import { Play, Pause, RotateCcw, ChevronRight, Brain, Zap, Activity, MapPin, Shuffle, Maximize2, Minimize2 } from 'lucide-react';
 
 const MouseMaze = () => {
   const [maze, setMaze] = useState([]);
@@ -26,6 +26,7 @@ const MouseMaze = () => {
   const playIntervalRef = useRef(null);
   const isProcessingRef = useRef(false);
   const vizRunIdRef = useRef(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Initialize maze on component mount
   useEffect(() => {
@@ -1058,8 +1059,8 @@ const MouseMaze = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-8 overflow-x-hidden" style={{ minHeight: '100vh' }}>
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gradient-to-br from-indigo-900 via-purple-900 to-pink-900 p-4 overflow-x-hidden" style={{ minHeight: '100vh' }}>
+      <div className={`mx-auto transform origin-top scale-100 md:scale-100 ${isFullscreen ? 'fixed inset-0 z-50 overflow-auto p-4 max-w-none w-screen h-screen' : 'max-w-6xl'}` }>
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-5xl font-bold text-white mb-2 tracking-tight">
@@ -1114,6 +1115,13 @@ const MouseMaze = () => {
                     }`}
                   >
                     <MapPin size={20} />
+                  </button>
+                  <button
+                    onClick={() => setIsFullscreen(v => !v)}
+                    className="p-2 rounded-lg transition-all bg-gray-700 text-gray-200 hover:bg-gray-600"
+                    title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
+                  >
+                    {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
                   </button>
                 </div>
                 
@@ -1186,7 +1194,7 @@ const MouseMaze = () => {
               </div>
 
               {/* Maze Grid */}
-              <div className="bg-gradient-to-br from-gray-900 to-gray-800 p-3 rounded-xl shadow-inner">
+              <div className={`relative bg-gradient-to-br from-gray-900 to-gray-800 p-3 rounded-xl shadow-inner mx-auto ${isFullscreen ? 'max-w-[800px] md:max-w-[900px]' : 'max-w-[520px] md:max-w-[640px]'}`}>
                 <div className="grid grid-cols-10 gap-0.5">
                   {maze.map((row, y) =>
                     row.map((cell, x) => (
@@ -1200,6 +1208,27 @@ const MouseMaze = () => {
                     ))
                   )}
                 </div>
+                {winner && (
+                  <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 rounded-xl">
+                    <div className="bg-white/90 px-6 py-4 rounded-lg shadow-xl text-center">
+                      <div className="text-2xl font-bold text-gray-900 mb-2">{winner.toUpperCase()} MOUSE WINS!</div>
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={resetGame}
+                          className="px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white rounded-lg shadow"
+                        >
+                          Play Again
+                        </button>
+                        <button
+                          onClick={randomizeMaze}
+                          className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg shadow"
+                        >
+                          New Maze
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Sabotage Tokens */}
@@ -1244,16 +1273,7 @@ const MouseMaze = () => {
                 </div>
               </div>
 
-              {/* Winner Message */}
-              {winner && (
-                <div className="mt-6">
-                  <div className="bg-gradient-to-r from-yellow-400 via-yellow-500 to-yellow-600 p-6 rounded-xl shadow-2xl">
-                    <h2 className="text-3xl font-bold text-gray-900 text-center animate-pulse">
-                      🎉 {winner.toUpperCase()} MOUSE WINS! 🎉
-                    </h2>
-                  </div>
-                </div>
-              )}
+              {/* Winner overlay now displayed above the board */}
             </div>
           </div>
 
@@ -1346,6 +1366,102 @@ const MouseMaze = () => {
           </div>
         </div>
       </div>
+      {isFullscreen && (
+        <div className="fixed inset-0 z-[999] bg-black">
+          <div className="absolute top-3 right-3">
+            <button
+              onClick={() => setIsFullscreen(false)}
+              className="p-2 rounded-lg transition-all bg-gray-700 text-gray-200 hover:bg-gray-600"
+              title="Exit Full Screen"
+            >
+              <Minimize2 size={20} />
+            </button>
+          </div>
+          <div className="w-full h-full flex items-center justify-center">
+            <div className="relative flex items-center justify-center">
+              {/* Left tokens */}
+              <div className="hidden md:flex flex-col gap-3 items-center mr-6">
+                {[...Array(3)].map((_, i) => (
+                  <div
+                    key={`fs-left-${i}`}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                      i < sabotageTokens.red
+                        ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-500/50'
+                        : 'bg-gray-700'
+                    }`}
+                  >
+                    <Zap size={20} className="text-white" />
+                  </div>
+                ))}
+                <span className="mt-1 text-sm text-red-300">Red</span>
+              </div>
+              {/* Board */}
+              <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 p-5 rounded-xl shadow-inner w-[65vw] md:w-[60vw] max-w-[800px] mx-auto">
+                <div className="grid grid-cols-10 gap-0.5">
+                  {maze.map((row, y) =>
+                    row.map((cell, x) => (
+                      <div
+                        key={`fs-${x}-${y}`}
+                        className={getCellClass(x, y)}
+                      >
+                        {getCellContent(x, y)}
+                        {renderPathDot(x, y)}
+                      </div>
+                    ))
+                  )}
+                </div>
+                {/* Fullscreen controls */}
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-3">
+                  <button
+                    onClick={togglePlay}
+                    className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg transition-all shadow-lg"
+                  >
+                    {isPlaying ? <Pause size={20} /> : <Play size={20} />}
+                    {isPlaying ? 'Pause' : 'Auto Play'}
+                  </button>
+                </div>
+                {winner && (
+                  <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 rounded-xl">
+                    <div className="bg-white/90 px-6 py-4 rounded-lg shadow-xl text-center">
+                      <div className="text-2xl font-bold text-gray-900 mb-2">{winner.toUpperCase()} MOUSE WINS!</div>
+                      <div className="flex gap-3 justify-center">
+                        <button
+                          onClick={resetGame}
+                          className="px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white rounded-lg shadow"
+                        >
+                          Play Again
+                        </button>
+                        <button
+                          onClick={randomizeMaze}
+                          className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg shadow"
+                        >
+                          New Maze
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* Right tokens */}
+              <div className="hidden md:flex flex-col gap-3 items-center ml-6">
+                {[...Array(3)].map((_, i) => (
+                  <div
+                    key={`fs-right-${i}`}
+                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                      i < sabotageTokens.blue
+                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/50'
+                        : 'bg-gray-700'
+                    }`}
+                  >
+                    <Zap size={20} className="text-white" />
+                  </div>
+                ))}
+                <span className="mt-1 text-sm text-blue-300">Blue</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
