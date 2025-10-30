@@ -24,6 +24,8 @@ const MouseMaze = () => {
   const [visitedCells, setVisitedCells] = useState([]);
   const [playSpeed, setPlaySpeed] = useState(2500);
   const playIntervalRef = useRef(null);
+  const isProcessingRef = useRef(false);
+  const vizRunIdRef = useRef(0);
 
   // Initialize maze on component mount
   useEffect(() => {
@@ -375,6 +377,8 @@ const MouseMaze = () => {
   };
 
   const visualizePathfinding = async (start, goal, algorithm, player) => {
+    // cancel any previous visualization by bumping run id
+    const myRunId = ++vizRunIdRef.current;
     const steps = [];
     const exploring = [];
     const visited = [];
@@ -397,8 +401,8 @@ const MouseMaze = () => {
       const closedSet = new Set();
       const heuristic = (pos) => Math.abs(pos.x - goal.x) + Math.abs(pos.y - goal.y);
      
-      let iterations = 0;
-      while (openSet.length > 0 && iterations < 20) {
+      while (openSet.length > 0) {
+        if (vizRunIdRef.current !== myRunId) return steps;
         openSet.sort((a, b) => a.f - b.f);
         const current = openSet.shift();
         const key = `${current.x},${current.y}`;
@@ -438,8 +442,6 @@ const MouseMaze = () => {
           setExploringCells([...exploring]);
           await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(50)));
           exploring.length = 0;
-         
-          iterations++;
         }
       }
     } else if (algorithm === 'bfs') {
@@ -448,11 +450,11 @@ const MouseMaze = () => {
       const visitedSet = new Set([`${start.x},${start.y}`]);
       visited.push(start);
      
-      let iterations = 0;
       let currentLevel = 0;
       let levelNodes = [];
      
-      while (queue.length > 0 && iterations < 25) {
+      while (queue.length > 0) {
+        if (vizRunIdRef.current !== myRunId) return steps;
         const current = queue.shift();
        
         // Show level-by-level exploration
@@ -487,7 +489,6 @@ const MouseMaze = () => {
           }
         }
        
-        iterations++;
         await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(60)));
       }
     } else if (algorithm === 'dfs') {
@@ -495,8 +496,8 @@ const MouseMaze = () => {
       const stack = [{ ...start, path: [start], depth: 0 }];
       const visitedSet = new Set();
      
-      let iterations = 0;
-      while (stack.length > 0 && iterations < 20) {
+      while (stack.length > 0) {
+        if (vizRunIdRef.current !== myRunId) return steps;
         const current = stack.pop();
         const key = `${current.x},${current.y}`;
        
@@ -533,8 +534,6 @@ const MouseMaze = () => {
             stack.push({...neighbor, path: [...current.path, neighbor], depth: current.depth + 1});
           }
         }
-       
-        iterations++;
       }
     } else if (algorithm === 'bidirectional') {
       steps.push(`Bidirectional Search: Expanding from both start and goal simultaneously...`);
@@ -555,12 +554,11 @@ const MouseMaze = () => {
         { x: 0, y: -1 }, { x: -1, y: 0 }
       ];
 
-      let iterations = 0;
       let forwardLevel = 0;
       let backwardLevel = 0;
       let meetingPoint = null;
-
-      while ((forwardQueue.length > 0 || backwardQueue.length > 0) && iterations < 25) {
+      while ((forwardQueue.length > 0 || backwardQueue.length > 0)) {
+        if (vizRunIdRef.current !== myRunId) return steps;
         
         // Expand forward search
         if (forwardQueue.length > 0) {
@@ -639,8 +637,6 @@ const MouseMaze = () => {
           
           await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
         }
-        
-        iterations++;
       }
       
       if (meetingPoint) {
@@ -652,8 +648,10 @@ const MouseMaze = () => {
    
     // Clear exploration visualization after a delay
     setTimeout(() => {
-      setExploringCells([]);
-      setVisitedCells([]);
+      if (vizRunIdRef.current === myRunId) {
+        setExploringCells([]);
+        setVisitedCells([]);
+      }
     }, 1500);
    
     setThinkingCells(visited);
@@ -789,6 +787,8 @@ const MouseMaze = () => {
 
   const makeMove = async () => {
     if (gameOver) return;
+    if (isProcessingRef.current) return; // prevent overlap
+    isProcessingRef.current = true;
 
     const player = currentPlayer;
     const algorithm = player === 'red' ? redAlgorithm : blueAlgorithm;
@@ -798,16 +798,26 @@ const MouseMaze = () => {
     const tokens = sabotageTokens[player];
     const turnsSince = turnsSinceMove[player];
    
+    // Track resulting state for accurate path updates
+    let resultingMaze = maze;
+    let resultingRedPos = redPos;
+    let resultingBluePos = bluePos;
+
     // Show thinking animation
     const calcSteps = [`${player.toUpperCase()} Mouse is thinking...`];
     calcSteps.push(`Step 1: Using ${algorithm.toUpperCase()} algorithm from (${myPos.x},${myPos.y}) to cheese (${cheesePos.x},${cheesePos.y})`);
    
-    // Visualize pathfinding
-    const pathSteps = await visualizePathfinding(myPos, cheesePos, algorithm, player);
-    calcSteps.push(...pathSteps);
+    // Compute path first; if no path, skip visualization to avoid confusing flashes
+    const previewPath = findPath(myPos, cheesePos, algorithm, maze);
+    if (previewPath) {
+      const pathSteps = await visualizePathfinding(myPos, cheesePos, algorithm, player);
+      calcSteps.push(...pathSteps);
+    } else {
+      calcSteps.push(`No path available; skipping visualization`);
+    }
    
     // Calculate paths
-    const myPath = findPath(myPos, cheesePos, algorithm, maze);
+    const myPath = previewPath || findPath(myPos, cheesePos, algorithm, maze);
     const opponentPath = findPath(opponentPos, cheesePos, opponentAlgorithm, maze);
    
     const myDist = myPath ? myPath.length - 1 : 999;
@@ -828,8 +838,10 @@ const MouseMaze = () => {
        
         if (player === 'red') {
           setRedPos(newPos);
+          resultingRedPos = newPos;
         } else {
           setBluePos(newPos);
+          resultingBluePos = newPos;
         }
        
         setTurnsSinceMove(prev => ({ ...prev, [player]: 0 }));
@@ -867,10 +879,11 @@ const MouseMaze = () => {
       
       if (shouldSabotage) {
         // Execute sabotage
-          const newMaze = maze.map(row => [...row]);
+          const newMaze = resultingMaze.map(row => [...row]);
         newMaze[bestSabotage.remove.y][bestSabotage.remove.x] = 0; // Remove wall
         newMaze[bestSabotage.place.y][bestSabotage.place.x] = 1;   // Place wall
           setMaze(newMaze);
+          resultingMaze = newMaze;
          
           setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
           setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
@@ -886,8 +899,10 @@ const MouseMaze = () => {
        
         if (player === 'red') {
           setRedPos(newPos);
+          resultingRedPos = newPos;
         } else {
           setBluePos(newPos);
+          resultingBluePos = newPos;
         }
        
         setTurnsSinceMove(prev => ({ ...prev, [player]: 0 }));
@@ -903,14 +918,15 @@ const MouseMaze = () => {
    
     setCalculationSteps(calcSteps);
    
-    // Update paths after move
-    updatePaths(maze, redPos, bluePos);
+    // Update paths using the resulting maze and positions to avoid one-turn lag
+    updatePaths(resultingMaze, resultingRedPos, resultingBluePos);
    
     // Switch player
     setCurrentPlayer(player === 'red' ? 'blue' : 'red');
     if (player === 'blue') {
       setTurn(prev => prev + 1);
     }
+    isProcessingRef.current = false;
   };
 
   const handleWin = (player) => {
@@ -1016,7 +1032,7 @@ const MouseMaze = () => {
 
   const getCellContent = (x, y) => {
     if (x === redPos.x && y === redPos.y) return '🐭';
-    if (x === bluePos.x && y === bluePos.y) return '🐭';
+    if (x === bluePos.x && y === bluePos.y) return '🐹';
     if (x === cheesePos.x && y === cheesePos.y) return '🧀';
     return '';
   };
