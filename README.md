@@ -2,15 +2,17 @@
 
 A React-based game where two AI mice compete to reach cheese using different pathfinding algorithms and sabotage tactics.
 
-## Features
+## Current Features
 
-- **Adjustable Maze Sizes**: Choose from 8x8, 10x10, 12x12, or 15x15 mazes
-- **Guaranteed Paths**: All generated mazes ensure both mice can reach the cheese
-- **Multiple Pathfinding Algorithms**: A* Search, Breadth-First Search, Depth-First Search
-- **Strategic Sabotage**: Players can use tokens to modify the maze
-- **Real-time Visualization**: Watch the AI algorithms work with step-by-step visualization
-- **Interactive Controls**: Step-by-step mode, auto-play, and new maze generation
-- **Algorithm Selection**: Choose different algorithms for each mouse
+- **10x10 Maze Board**: Fixed-size grid with border walls.
+- **Guaranteed Paths**: Randomly generated mazes always ensure both mice can reach the cheese.
+- **Multiple Pathfinding Algorithms**: A* Search, Breadth-First Search, Depth-First Search, and Bidirectional Search.
+- **Strategic Sabotage (3 tokens each)**: AI evaluates removing one wall and placing it elsewhere to help itself and hinder the opponent.
+- **Real-time Visualization**: Step-by-step exploration highlights for each algorithm (visited, exploring, and thinking cells).
+- **Interactive Controls**: Auto Play, single-step, reset, and "New Maze" generation.
+- **Path Overlay Toggle**: Show/hide each mouse's current planned path.
+- **Speed Control**: Adjustable turn interval with visual feedback.
+- **Game Log & AI Reasoning**: Side panels show decisions, exploration steps, and game events.
 
 ## Installation
 
@@ -28,37 +30,31 @@ npm start
 
 ## How to Play
 
-1. **Choose Maze Size**: Select from Small (8x8), Medium (10x10), Large (12x12), or Extra Large (15x15)
-2. **Select Algorithms**: Choose pathfinding algorithms for the Red and Blue mice
-3. **Generate New Maze**: Use "New Maze" button to create a fresh maze layout (guaranteed to have paths)
-4. **Start the Game**: Click "Auto Play" to watch the mice compete automatically, or use "Step" for manual control
-5. **Watch the AI**: Observe how each algorithm navigates the maze and makes strategic decisions
-6. **Sabotage**: Mice can use sabotage tokens to block opponents or create new paths
-7. **Win Condition**: First mouse to reach the cheese wins!
+1. **Select Algorithms** for Red and Blue from the dropdowns.
+2. **Generate a New Maze** with "New Maze" (paths guaranteed).
+3. **Start** with "Auto Play" or use **Step** for manual turns.
+4. **Toggle Path Overlay** to see each mouse's current planned route.
+5. **Win Condition**: First mouse to reach the cheese wins.
 
 ## Game Mechanics
 
-- **Movement**: Each mouse can move up to 2 steps per turn
-- **Sabotage**: Remove a wall and place it elsewhere (with restrictions)
-- **Strategy**: Mice evaluate whether to move or sabotage based on opponent distance and available tokens
-- **Forced Movement**: If a mouse hasn't moved for 2 turns, it must move
+- **Movement**: Up to 2 cells per turn along the chosen algorithm's path.
+- **Sabotage**: Consumes 1 token. Removes one wall and places it in another empty cell (mice/cheese cells are excluded). The AI evaluates options and will only sabotage if it yields higher strategic value than moving.
+- **Forced Movement**: If a mouse did not move on its previous turn, it is forced to move on its next turn.
+- **Turn Order**: Red starts; turns alternate. Auto-play advances turns at the selected speed.
 
 ## Technical Details
 
-- Built with React 18
-- Uses Tailwind CSS for styling
+- React 18
+- Tailwind CSS for styling
 - Lucide React for icons
-- Real-time pathfinding visualization
-- Responsive design
+- Real-time pathfinding visualization with algorithm-specific highlighting, including bidirectional forward/backward coloring
 
-## Bugs Fixed
+## Known Limitations (current state)
 
-1. **File Extension**: Fixed missing `.jsx` extension that caused linter errors
-2. **Dependencies**: Added proper `package.json` with all required dependencies
-3. **Import Path Error**: Moved MouseMaze component into `src/` directory to fix React build system import restrictions
-4. **UpdatePaths Bug**: Fixed incorrect parameter passing in `updatePaths` function
-5. **useEffect Dependencies**: Removed `currentPlayer` from dependency array to prevent interval restart issues
-6. **Clean Imports**: Removed unused `useCallback` import
+- Maze size is fixed at 10x10.
+- Both mice use the same emoji (rings/colors differentiate positions).
+- Speed slider maps to turn interval; labeling may feel inverted depending on expectation.
 
 ## Project Structure
 
