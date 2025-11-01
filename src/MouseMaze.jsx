@@ -1,795 +1,150 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RotateCcw, ChevronRight, Brain, Zap, Activity, MapPin, Shuffle, Maximize2, Minimize2 } from 'lucide-react';
+import React, { useEffect, useRef, useCallback, useMemo } from 'react';
+import { Play, Pause, Zap, Minimize2 } from 'lucide-react';
+import MazeGrid from './components/MazeGrid/MazeGrid.jsx';
+import Controls from './components/Controls/Controls.jsx';
+import {
+  MAX_MOVES_PER_TURN,
+  FORCED_MOVE_THRESHOLD,
+  MIN_SPEED_MS,
+  MAX_SPEED_MS,
+  SPEED_SLIDER_STEP,
+  SPEED_CALC_OFFSET,
+  MAZE_SIZE,
+  CELL_TYPES
+} from './core/constants';
+import { findPath } from './algorithms/index.js';
+import useVisualization from './hooks/useVisualization.js';
+import useGameState from './hooks/useGameState.js';
+import useAutoplay from './hooks/useAutoplay.js';
+import { evaluateAllSabotageOptions, shouldSabotageOverMove } from './core/ai.js';
+import AICalculationPanel from './components/SidePanel/AICalculationPanel.jsx';
+import StatsPanel from './components/SidePanel/StatsPanel.jsx';
+import GameLog from './components/SidePanel/GameLog.jsx';
+import AlgorithmSelectors from './components/AlgorithmSelectors/AlgorithmSelectors.jsx';
+import WinnerOverlay from './components/WinnerOverlay/WinnerOverlay.jsx';
+import TokenDisplay from './components/Tokens/TokenDisplay.jsx';
 
 const MouseMaze = () => {
-  const [maze, setMaze] = useState([]);
-  const [redPos, setRedPos] = useState({ x: 1, y: 1 });
-  const [bluePos, setBluePos] = useState({ x: 8, y: 8 });
-  const [cheesePos] = useState({ x: 5, y: 4 });
-  const [currentPlayer, setCurrentPlayer] = useState('red');
-  const [turn, setTurn] = useState(1);
-  const [sabotageTokens, setSabotageTokens] = useState({ red: 3, blue: 3 });
-  const [turnsSinceMove, setTurnsSinceMove] = useState({ red: 0, blue: 0 });
-  const [redAlgorithm, setRedAlgorithm] = useState('bfs');
-  const [blueAlgorithm, setBlueAlgorithm] = useState('astar');
-  const [gameOver, setGameOver] = useState(false);
-  const [winner, setWinner] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [gameLog, setGameLog] = useState([]);
-  const [calculationSteps, setCalculationSteps] = useState([]);
-  const [currentPaths, setCurrentPaths] = useState({ red: null, blue: null });
-  const [thinkingCells, setThinkingCells] = useState([]);
-  const [showPaths, setShowPaths] = useState(true);
-  const [exploringCells, setExploringCells] = useState([]);
-  const [visitedCells, setVisitedCells] = useState([]);
-  const [playSpeed, setPlaySpeed] = useState(2500);
-  const playIntervalRef = useRef(null);
-  const isProcessingRef = useRef(false);
-  const vizRunIdRef = useRef(0);
-  const [isFullscreen, setIsFullscreen] = useState(false);
+  // Game state hook
+  const gameState = useGameState();
+  const {
+    maze, setMaze,
+    redPos, bluePos, cheesePos,
+    currentPlayer, turn,
+    sabotageTokens, turnsSinceMove,
+    redAlgorithm, setRedAlgorithm,
+    blueAlgorithm, setBlueAlgorithm,
+    gameOver, winner,
+    isPlaying, setIsPlaying,
+    gameLog, calculationSteps, setCalculationSteps,
+    currentPaths, showPaths, setShowPaths,
+    playSpeed, setPlaySpeed,
+    isFullscreen, setIsFullscreen,
+    initializeMaze, randomizeMaze, resetGame,
+    updatePaths, updatePlayerPosition,
+    incrementTurnsSinceMove, switchPlayer,
+    handleWin, addToLog, consumeSabotageToken
+  } = gameState;
 
-  // Initialize maze on component mount
+  // Visualization run ID ref (for cancellation)
+  const vizRunIdRef = useRef(0);
+
+  // Processing guard ref (for preventing overlapping moves)
+  const isProcessingRef = useRef(false);
+  const playIntervalRef = useRef(null);
+
+  // Visualization hook
+  const viz = useVisualization(maze, playSpeed, isValidMove);
+  const exploringCellsHook = viz.exploringCells;
+  const visitedCellsHook = viz.visitedCells;
+  const thinkingCellsHook = viz.thinkingCells;
+  const visualizePathfindingHook = viz.visualizePathfinding;
+
+  // Optimize cell lookups: Convert arrays to Sets/Maps for O(1) access
+  const exploringCellsSet = useMemo(() => {
+    const set = new Map();
+    exploringCellsHook.forEach(cell => {
+      set.set(`${cell.x},${cell.y}`, cell);
+    });
+    return set;
+  }, [exploringCellsHook]);
+
+  const visitedCellsSet = useMemo(() => {
+    const set = new Map();
+    visitedCellsHook.forEach(cell => {
+      set.set(`${cell.x},${cell.y}`, cell);
+    });
+    return set;
+  }, [visitedCellsHook]);
+
+  const thinkingCellsSet = useMemo(() => {
+    const set = new Set();
+    thinkingCellsHook.forEach(cell => {
+      set.add(`${cell.x},${cell.y}`);
+    });
+    return set;
+  }, [thinkingCellsHook]);
+
+  // Memoize path sets for O(1) lookup
+  const redPathSet = useMemo(() => {
+    if (!showPaths || !currentPaths.red) return new Set();
+    return new Set(currentPaths.red.map(p => `${p.x},${p.y}`));
+  }, [showPaths, currentPaths.red]);
+
+  const bluePathSet = useMemo(() => {
+    if (!showPaths || !currentPaths.blue) return new Set();
+    return new Set(currentPaths.blue.map(p => `${p.x},${p.y}`));
+  }, [showPaths, currentPaths.blue]);
+
+  // Initialize maze on component mount (only once)
   useEffect(() => {
     initializeMaze();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const generateRandomMaze = () => {
-    // Create maze with walls around border
-    const newMaze = Array(10).fill().map((_, y) => 
-      Array(10).fill().map((_, x) => {
-        // Border walls
-        if (x === 0 || x === 9 || y === 0 || y === 9) return 1;
-        // Random interior with 35% wall density
-        return Math.random() < 0.35 ? 1 : 0;
-      })
-    );
-
-    // Ensure critical positions are open
-    const redStart = { x: 1, y: 1 };
-    const blueStart = { x: 8, y: 8 };
-    const cheese = { x: 5, y: 4 };
-
-    newMaze[redStart.y][redStart.x] = 0;
-    newMaze[blueStart.y][blueStart.x] = 0;
-    newMaze[cheese.y][cheese.x] = 0;
-
-    // Ensure paths exist by doing a connectivity check and opening walls if needed
-    const ensureConnectivity = (maze, from, to) => {
-      const path = findPathBFS(from, to, maze);
-      if (!path) {
-        // Create a simple path by opening walls
-        let current = { ...from };
-        while (current.x !== to.x || current.y !== to.y) {
-          // Move toward target
-          if (current.x < to.x) current.x++;
-          else if (current.x > to.x) current.x--;
-          else if (current.y < to.y) current.y++;
-          else if (current.y > to.y) current.y--;
-          
-          maze[current.y][current.x] = 0; // Open the path
-        }
-      }
-    };
-
-    // Ensure both mice can reach cheese
-    ensureConnectivity(newMaze, redStart, cheese);
-    ensureConnectivity(newMaze, blueStart, cheese);
-
-    return newMaze;
-  };
-
-  const initializeMaze = () => {
-    const initialMaze = [
-      [1,1,1,1,1,1,1,1,1,1],
-      [1,0,0,1,0,0,0,1,0,1],
-      [1,0,1,0,0,1,0,0,0,1],
-      [1,0,1,1,0,1,1,1,0,1],
-      [1,0,0,0,0,0,0,0,0,1],
-      [1,0,1,1,0,0,1,1,0,1],
-      [1,0,0,0,0,1,0,0,0,1],
-      [1,1,0,1,0,1,0,1,0,1],
-      [1,0,0,0,0,0,0,0,0,1],
-      [1,1,1,1,1,1,1,1,1,1]
-    ];
-    setMaze(initialMaze);
-    updatePaths(initialMaze, { x: 1, y: 1 }, { x: 8, y: 8 });
-  };
-
-  const randomizeMaze = () => {
-    const newMaze = generateRandomMaze();
-    setMaze(newMaze);
-    updatePaths(newMaze, { x: 1, y: 1 }, { x: 8, y: 8 });
-    
-    // Reset game state for new maze
-    setRedPos({ x: 1, y: 1 });
-    setBluePos({ x: 8, y: 8 });
-    setCurrentPlayer('red');
-    setTurn(1);
-    setSabotageTokens({ red: 3, blue: 3 });
-    setTurnsSinceMove({ red: 0, blue: 0 });
-    setGameOver(false);
-    setWinner(null);
-    setIsPlaying(false);
-    setGameLog([]);
-    setCalculationSteps(['New maze generated - Let the strategic competition begin!']);
-    setThinkingCells([]);
-    if (playIntervalRef.current) {
-      clearInterval(playIntervalRef.current);
-    }
-  };
-
-  const resetGame = () => {
-    initializeMaze();
-    setRedPos({ x: 1, y: 1 });
-    setBluePos({ x: 8, y: 8 });
-    setCurrentPlayer('red');
-    setTurn(1);
-    setSabotageTokens({ red: 3, blue: 3 });
-    setTurnsSinceMove({ red: 0, blue: 0 });
-    setGameOver(false);
-    setWinner(null);
-    setIsPlaying(false);
-    setGameLog([]);
-    setCalculationSteps(['Game reset - Ready for strategic competition!']);
-    setThinkingCells([]);
-    if (playIntervalRef.current) {
-      clearInterval(playIntervalRef.current);
-    }
-  };
-
-  const isValidMove = (pos, currentMaze) => {
+  function isValidMove(pos, currentMaze) {
     const mazeToUse = currentMaze || maze;
-    return pos.x >= 0 && pos.x < 10 &&
-           pos.y >= 0 && pos.y < 10 &&
-           mazeToUse[pos.y] && mazeToUse[pos.y][pos.x] === 0;
-  };
-
-  const findPathBFS = (start, goal, currentMaze) => {
-    const queue = [{ ...start, path: [start] }];
-    const visited = new Set([`${start.x},${start.y}`]);
-   
-    while (queue.length > 0) {
-      const current = queue.shift();
-     
-      if (current.x === goal.x && current.y === goal.y) {
-        return current.path;
-      }
-     
-      const directions = [
-        { x: 0, y: 1 }, { x: 1, y: 0 },
-        { x: 0, y: -1 }, { x: -1, y: 0 }
-      ];
-     
-      for (let dir of directions) {
-        const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-        const key = `${neighbor.x},${neighbor.y}`;
-       
-        if (isValidMove(neighbor, currentMaze) && !visited.has(key)) {
-          visited.add(key);
-          queue.push({
-            ...neighbor,
-            path: [...current.path, neighbor]
-          });
-        }
-      }
-    }
-   
-    return null;
-  };
-
-  const findPathAStar = (start, goal, currentMaze) => {
-    const openSet = [{ ...start, g: 0, h: 0, f: 0, path: [start] }];
-    const closedSet = new Set();
-   
-    const heuristic = (pos) => Math.abs(pos.x - goal.x) + Math.abs(pos.y - goal.y);
-   
-    while (openSet.length > 0) {
-      openSet.sort((a, b) => a.f - b.f);
-      const current = openSet.shift();
-      const key = `${current.x},${current.y}`;
-     
-      if (closedSet.has(key)) continue;
-      closedSet.add(key);
-     
-      if (current.x === goal.x && current.y === goal.y) {
-        return current.path;
-      }
-     
-      const directions = [
-        { x: 0, y: 1 }, { x: 1, y: 0 },
-        { x: 0, y: -1 }, { x: -1, y: 0 }
-      ];
-     
-      for (let dir of directions) {
-        const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-       
-        if (isValidMove(neighbor, currentMaze) && !closedSet.has(`${neighbor.x},${neighbor.y}`)) {
-          const g = current.g + 1;
-          const h = heuristic(neighbor);
-          const f = g + h;
-         
-          openSet.push({
-            ...neighbor,
-            g, h, f,
-            path: [...current.path, neighbor]
-          });
-        }
-      }
-    }
-   
-    return null;
-  };
-
-  const findPathDFS = (start, goal, currentMaze) => {
-    const stack = [{ ...start, path: [start] }];
-    const visited = new Set();
-   
-    while (stack.length > 0) {
-      const current = stack.pop();
-      const key = `${current.x},${current.y}`;
-     
-      if (visited.has(key)) continue;
-      visited.add(key);
-     
-      if (current.x === goal.x && current.y === goal.y) {
-        return current.path;
-      }
-     
-      const directions = [
-        { x: 0, y: 1 }, { x: 1, y: 0 },
-        { x: 0, y: -1 }, { x: -1, y: 0 }
-      ];
-     
-      // Shuffle directions for DFS randomness
-      for (let i = directions.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [directions[i], directions[j]] = [directions[j], directions[i]];
-      }
-     
-      for (let dir of directions) {
-        const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-        const neighborKey = `${neighbor.x},${neighbor.y}`;
-       
-        if (isValidMove(neighbor, currentMaze) && !visited.has(neighborKey)) {
-          stack.push({
-            ...neighbor,
-            path: [...current.path, neighbor]
-          });
-        }
-      }
-    }
-   
-    return null;
-  };
-
-  const findPathBidirectional = (start, goal, currentMaze) => {
-    if (start.x === goal.x && start.y === goal.y) {
-      return [start];
-    }
-
-    // Two BFS queues - forward and backward
-    const forwardQueue = [{ ...start, path: [start] }];
-    const backwardQueue = [{ ...goal, path: [goal] }];
-    
-    // Visited sets for each direction
-    const forwardVisited = new Map();
-    const backwardVisited = new Map();
-    
-    forwardVisited.set(`${start.x},${start.y}`, { ...start, path: [start] });
-    backwardVisited.set(`${goal.x},${goal.y}`, { ...goal, path: [goal] });
-
-    const directions = [
-      { x: 0, y: 1 }, { x: 1, y: 0 },
-      { x: 0, y: -1 }, { x: -1, y: 0 }
-    ];
-
-    while (forwardQueue.length > 0 || backwardQueue.length > 0) {
-      // Expand forward search
-      if (forwardQueue.length > 0) {
-        const current = forwardQueue.shift();
-        const currentKey = `${current.x},${current.y}`;
-        
-        // Check if backward search has visited this node
-        if (backwardVisited.has(currentKey)) {
-          const backwardNode = backwardVisited.get(currentKey);
-          // Combine paths: forward path + reversed backward path
-          const combinedPath = [
-            ...current.path,
-            ...backwardNode.path.slice(0, -1).reverse()
-          ];
-          return combinedPath;
-        }
-
-        // Expand neighbors
-        for (let dir of directions) {
-          const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-          const neighborKey = `${neighbor.x},${neighbor.y}`;
-          
-          if (isValidMove(neighbor, currentMaze) && !forwardVisited.has(neighborKey)) {
-            const neighborNode = { ...neighbor, path: [...current.path, neighbor] };
-            forwardVisited.set(neighborKey, neighborNode);
-            forwardQueue.push(neighborNode);
-          }
-        }
-      }
-
-      // Expand backward search
-      if (backwardQueue.length > 0) {
-        const current = backwardQueue.shift();
-        const currentKey = `${current.x},${current.y}`;
-        
-        // Check if forward search has visited this node
-        if (forwardVisited.has(currentKey)) {
-          const forwardNode = forwardVisited.get(currentKey);
-          // Combine paths: forward path + reversed backward path
-          const combinedPath = [
-            ...forwardNode.path,
-            ...current.path.slice(0, -1).reverse()
-          ];
-          return combinedPath;
-        }
-
-        // Expand neighbors
-        for (let dir of directions) {
-          const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-          const neighborKey = `${neighbor.x},${neighbor.y}`;
-          
-          if (isValidMove(neighbor, currentMaze) && !backwardVisited.has(neighborKey)) {
-            const neighborNode = { ...neighbor, path: [...current.path, neighbor] };
-            backwardVisited.set(neighborKey, neighborNode);
-            backwardQueue.push(neighborNode);
-          }
-        }
-      }
-    }
-   
-    return null;
-  };
-
-  const findPath = (start, goal, algorithm, currentMaze) => {
-    switch(algorithm) {
-      case 'astar':
-        return findPathAStar(start, goal, currentMaze);
-      case 'bfs':
-        return findPathBFS(start, goal, currentMaze);
-      case 'dfs':
-        return findPathDFS(start, goal, currentMaze);
-      case 'bidirectional':
-        return findPathBidirectional(start, goal, currentMaze);
-      default:
-        return findPathBFS(start, goal, currentMaze);
-    }
-  };
-
-  const updatePaths = (currentMaze, redPosition, bluePosition) => {
-    const redPath = findPath(
-      redPosition || redPos,
-      cheesePos,
-      redAlgorithm,
-      currentMaze
+    return (
+      pos.x >= 0 &&
+      pos.x < MAZE_SIZE &&
+      pos.y >= 0 &&
+      pos.y < MAZE_SIZE &&
+      mazeToUse[pos.y] &&
+      mazeToUse[pos.y][pos.x] === CELL_TYPES.OPEN
     );
-    const bluePath = findPath(
-      bluePosition || bluePos,
-      cheesePos,
-      blueAlgorithm,
-      currentMaze
-    );
-    setCurrentPaths({ red: redPath, blue: bluePath });
+  }
+
+  // Wrapper for randomizeMaze with cleanup callback
+  const handleRandomizeMaze = () => {
+    randomizeMaze(() => {
+      if (playIntervalRef.current) {
+        clearTimeout(playIntervalRef.current);
+        playIntervalRef.current = null;
+      }
+    });
+  };
+
+  // Wrapper for resetGame with cleanup callback
+  const handleResetGame = () => {
+    resetGame(() => {
+      if (playIntervalRef.current) {
+        clearTimeout(playIntervalRef.current);
+        playIntervalRef.current = null;
+      }
+    });
   };
 
   const visualizePathfinding = async (start, goal, algorithm, player) => {
-    // cancel any previous visualization by bumping run id
-    const myRunId = ++vizRunIdRef.current;
-    const steps = [];
-    const exploring = [];
-    const visited = [];
-   
-    // Clear previous visualization
-    setExploringCells([]);
-    setVisitedCells([]);
-    
-    // Calculate visualization delay based on playSpeed
-    // playSpeed: 500ms (fast) to 5000ms (slow)
-    // Visualization delays: 20ms (fast) to 200ms (slow)
-    const getVisualizationDelay = (baseDelay = 100) => {
-      const speedFactor = playSpeed / 1000; // 0.5 to 5.0
-      return Math.max(20, Math.min(200, baseDelay * speedFactor * 0.4));
-    };
-   
-    if (algorithm === 'astar') {
-      steps.push(`A* Search: Exploring with heuristic guidance...`);
-      const openSet = [{ ...start, g: 0, h: 0, f: 0, path: [start] }];
-      const closedSet = new Set();
-      const heuristic = (pos) => Math.abs(pos.x - goal.x) + Math.abs(pos.y - goal.y);
-     
-      while (openSet.length > 0) {
-        if (vizRunIdRef.current !== myRunId) return steps;
-        openSet.sort((a, b) => a.f - b.f);
-        const current = openSet.shift();
-        const key = `${current.x},${current.y}`;
-       
-        if (!closedSet.has(key)) {
-          closedSet.add(key);
-          visited.push({ x: current.x, y: current.y });
-         
-          // Update visualization
-          setVisitedCells([...visited]);
-          setExploringCells([current]);
-          steps.push(`  Exploring (${current.x},${current.y}) - f=${current.f.toFixed(1)}`);
-          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
-         
-          if (current.x === goal.x && current.y === goal.y) {
-            steps.push(`✅ Path found! Length: ${current.path.length - 1} steps`);
-            break;
-          }
-         
-          const directions = [
-            { x: 0, y: 1 }, { x: 1, y: 0 },
-            { x: 0, y: -1 }, { x: -1, y: 0 }
-          ];
-         
-          for (let dir of directions) {
-            const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-            if (isValidMove(neighbor, maze) && !closedSet.has(`${neighbor.x},${neighbor.y}`)) {
-              const g = current.g + 1;
-              const h = heuristic(neighbor);
-              const f = g + h;
-              openSet.push({...neighbor, g, h, f, path: [...current.path, neighbor]});
-              exploring.push(neighbor);
-            }
-          }
-         
-          // Show cells being considered
-          setExploringCells([...exploring]);
-          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(50)));
-          exploring.length = 0;
-        }
-      }
-    } else if (algorithm === 'bfs') {
-      steps.push(`BFS: Systematic level-by-level exploration...`);
-      const queue = [{ ...start, path: [start], level: 0 }];
-      const visitedSet = new Set([`${start.x},${start.y}`]);
-      visited.push(start);
-     
-      let currentLevel = 0;
-      let levelNodes = [];
-     
-      while (queue.length > 0) {
-        if (vizRunIdRef.current !== myRunId) return steps;
-        const current = queue.shift();
-       
-        // Show level-by-level exploration
-        if (current.level > currentLevel) {
-          currentLevel = current.level;
-          setExploringCells([...levelNodes]);
-          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(150)));
-          levelNodes = [];
-        }
-       
-        setVisitedCells([...visited]);
-        steps.push(`  Level ${current.level}: Checking (${current.x},${current.y})`);
-       
-        if (current.x === goal.x && current.y === goal.y) {
-          steps.push(`✅ Shortest path found! Length: ${current.path.length - 1} steps`);
-          break;
-        }
-       
-        const directions = [
-          { x: 0, y: 1 }, { x: 1, y: 0 },
-          { x: 0, y: -1 }, { x: -1, y: 0 }
-        ];
-       
-        for (let dir of directions) {
-          const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-          const key = `${neighbor.x},${neighbor.y}`;
-          if (isValidMove(neighbor, maze) && !visitedSet.has(key)) {
-            visitedSet.add(key);
-            visited.push(neighbor);
-            queue.push({...neighbor, path: [...current.path, neighbor], level: current.level + 1});
-            levelNodes.push(neighbor);
-          }
-        }
-       
-        await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(60)));
-      }
-    } else if (algorithm === 'dfs') {
-      steps.push(`DFS: Deep exploration with backtracking...`);
-      const stack = [{ ...start, path: [start], depth: 0 }];
-      const visitedSet = new Set();
-     
-      while (stack.length > 0) {
-        if (vizRunIdRef.current !== myRunId) return steps;
-        const current = stack.pop();
-        const key = `${current.x},${current.y}`;
-       
-        if (visitedSet.has(key)) continue;
-        visitedSet.add(key);
-        visited.push({ x: current.x, y: current.y });
-       
-        // Update visualization for DFS
-        setVisitedCells([...visited]);
-        setExploringCells([current]);
-        steps.push(`  Depth ${current.depth}: Exploring (${current.x},${current.y})`);
-        await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
-       
-        if (current.x === goal.x && current.y === goal.y) {
-          steps.push(`✅ Path found! Length: ${current.path.length - 1} steps (may not be shortest)`);
-          break;
-        }
-       
-        const directions = [
-          { x: 0, y: 1 }, { x: 1, y: 0 },
-          { x: 0, y: -1 }, { x: -1, y: 0 }
-        ];
-       
-        // Shuffle for DFS randomness
-        for (let i = directions.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [directions[i], directions[j]] = [directions[j], directions[i]];
-        }
-       
-        for (let dir of directions) {
-          const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-          const neighborKey = `${neighbor.x},${neighbor.y}`;
-          if (isValidMove(neighbor, maze) && !visitedSet.has(neighborKey)) {
-            stack.push({...neighbor, path: [...current.path, neighbor], depth: current.depth + 1});
-          }
-        }
-      }
-    } else if (algorithm === 'bidirectional') {
-      steps.push(`Bidirectional Search: Expanding from both start and goal simultaneously...`);
-      
-      // Two BFS queues - forward and backward
-      const forwardQueue = [{ ...start, path: [start], level: 0, direction: 'forward' }];
-      const backwardQueue = [{ ...goal, path: [goal], level: 0, direction: 'backward' }];
-      
-      // Visited sets for each direction
-      const forwardVisited = new Map();
-      const backwardVisited = new Map();
-      
-      forwardVisited.set(`${start.x},${start.y}`, { ...start, path: [start] });
-      backwardVisited.set(`${goal.x},${goal.y}`, { ...goal, path: [goal] });
-
-      const directions = [
-        { x: 0, y: 1 }, { x: 1, y: 0 },
-        { x: 0, y: -1 }, { x: -1, y: 0 }
-      ];
-
-      let forwardLevel = 0;
-      let backwardLevel = 0;
-      let meetingPoint = null;
-      while ((forwardQueue.length > 0 || backwardQueue.length > 0)) {
-        if (vizRunIdRef.current !== myRunId) return steps;
-        
-        // Expand forward search
-        if (forwardQueue.length > 0) {
-          const current = forwardQueue.shift();
-          const currentKey = `${current.x},${current.y}`;
-          
-          // Update visualization for forward search
-          setVisitedCells(prev => [...prev, { ...current, direction: 'forward' }]);
-          setExploringCells([{ ...current, direction: 'forward' }]);
-          
-          if (current.level > forwardLevel) {
-            forwardLevel = current.level;
-            steps.push(`  Forward search level ${forwardLevel}: exploring from start`);
-          }
-          
-          // Check if backward search has visited this node
-          if (backwardVisited.has(currentKey)) {
-            const backwardNode = backwardVisited.get(currentKey);
-            steps.push(`🎯 MEETING POINT FOUND at (${current.x},${current.y})!`);
-            steps.push(`  Forward path length: ${current.path.length - 1}`);
-            steps.push(`  Backward path length: ${backwardNode.path.length - 1}`);
-            meetingPoint = { forward: current, backward: backwardNode };
-            break;
-          }
-
-          // Expand neighbors
-          for (let dir of directions) {
-            const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-            const neighborKey = `${neighbor.x},${neighbor.y}`;
-            
-            if (isValidMove(neighbor, maze) && !forwardVisited.has(neighborKey)) {
-              const neighborNode = { ...neighbor, path: [...current.path, neighbor], level: current.level + 1, direction: 'forward' };
-              forwardVisited.set(neighborKey, neighborNode);
-              forwardQueue.push(neighborNode);
-            }
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
-        }
-
-        // Expand backward search
-        if (backwardQueue.length > 0 && !meetingPoint) {
-          const current = backwardQueue.shift();
-          const currentKey = `${current.x},${current.y}`;
-          
-          // Update visualization for backward search
-          setVisitedCells(prev => [...prev, { ...current, direction: 'backward' }]);
-          setExploringCells([{ ...current, direction: 'backward' }]);
-          
-          if (current.level > backwardLevel) {
-            backwardLevel = current.level;
-            steps.push(`  Backward search level ${backwardLevel}: exploring from goal`);
-          }
-          
-          // Check if forward search has visited this node
-          if (forwardVisited.has(currentKey)) {
-            const forwardNode = forwardVisited.get(currentKey);
-            steps.push(`🎯 MEETING POINT FOUND at (${current.x},${current.y})!`);
-            steps.push(`  Forward path length: ${forwardNode.path.length - 1}`);
-            steps.push(`  Backward path length: ${current.path.length - 1}`);
-            meetingPoint = { forward: forwardNode, backward: current };
-            break;
-          }
-
-          // Expand neighbors
-          for (let dir of directions) {
-            const neighbor = { x: current.x + dir.x, y: current.y + dir.y };
-            const neighborKey = `${neighbor.x},${neighbor.y}`;
-            
-            if (isValidMove(neighbor, maze) && !backwardVisited.has(neighborKey)) {
-              const neighborNode = { ...neighbor, path: [...current.path, neighbor], level: current.level + 1, direction: 'backward' };
-              backwardVisited.set(neighborKey, neighborNode);
-              backwardQueue.push(neighborNode);
-            }
-          }
-          
-          await new Promise(resolve => setTimeout(resolve, getVisualizationDelay(100)));
-        }
-      }
-      
-      if (meetingPoint) {
-        const totalLength = meetingPoint.forward.path.length + meetingPoint.backward.path.length - 2;
-        steps.push(`✅ Optimal path found! Total length: ${totalLength} steps`);
-        steps.push(`  Bidirectional search explored fewer nodes than unidirectional!`);
-      }
-    }
-   
-    // Clear exploration visualization after a delay
-    setTimeout(() => {
-      if (vizRunIdRef.current === myRunId) {
-        setExploringCells([]);
-        setVisitedCells([]);
-      }
-    }, 1500);
-   
-    setThinkingCells(visited);
-    setTimeout(() => setThinkingCells([]), 2000);
-   
-    return steps;
+    return await visualizePathfindingHook(start, goal, algorithm, player);
   };
 
-  const evaluateAllSabotageOptions = (player, myPos, opponentPos, myCurrentDist, opponentCurrentDist, tokens) => {
-    if (tokens <= 0) return null;
-
-    const algorithm = player === 'red' ? redAlgorithm : blueAlgorithm;
-    const opponentAlgorithm = player === 'red' ? blueAlgorithm : redAlgorithm;
-    
-    // Find all removable walls (excluding borders)
-    const removableWalls = [];
-    for (let y = 1; y < 9; y++) {
-      for (let x = 1; x < 9; x++) {
-        if (maze[y][x] === 1) {
-          removableWalls.push({ x, y });
-        }
-      }
-    }
-
-    // Find all valid placement positions (empty cells, not on mice or cheese)
-    const validPlacements = [];
-    for (let y = 1; y < 9; y++) {
-      for (let x = 1; x < 9; x++) {
-        if (maze[y][x] === 0 &&
-            !(x === myPos.x && y === myPos.y) &&
-            !(x === opponentPos.x && y === opponentPos.y) &&
-            !(x === cheesePos.x && y === cheesePos.y)) {
-          validPlacements.push({ x, y });
-        }
-      }
-    }
-   
-    let bestOption = null;
-    let bestScore = -Infinity;
-    let evaluationCount = 0;
-    const maxEvaluations = 200; // Performance limit
-
-    // Evaluate every combination of remove + place
-    for (let removeWall of removableWalls) {
-      for (let placePos of validPlacements) {
-        if (evaluationCount >= maxEvaluations) break;
-        
-        // Create test maze
-        const testMaze = maze.map(row => [...row]);
-        testMaze[removeWall.y][removeWall.x] = 0; // Remove wall
-        testMaze[placePos.y][placePos.x] = 1;     // Place wall
-        
-        // Ensure both mice can still reach cheese
-        const myNewPath = findPath(myPos, cheesePos, algorithm, testMaze);
-        const opponentNewPath = findPath(opponentPos, cheesePos, opponentAlgorithm, testMaze);
-        
-        if (!myNewPath || !opponentNewPath) continue; // Skip if blocks either mouse completely
-        
-        const myNewDist = myNewPath.length - 1;
-        const opponentNewDist = opponentNewPath.length - 1;
-        
-        // Calculate benefits
-        const selfBenefit = myCurrentDist - myNewDist; // Positive = shorter path for me
-        const opponentHarm = opponentNewDist - opponentCurrentDist; // Positive = longer path for opponent
-        
-        // Algorithm-specific weighting
-        let algorithmBonus = 0;
-        if (opponentAlgorithm === 'astar') {
-          algorithmBonus = 2; // A* is predictable, easier to sabotage
-        } else if (opponentAlgorithm === 'dfs') {
-          algorithmBonus = -1; // DFS is unpredictable, harder to sabotage effectively
-        }
-        
-        // Strategic context bonuses
-        let contextBonus = 0;
-        if (opponentCurrentDist <= 3) contextBonus += 5; // Opponent close to winning
-        if (myCurrentDist > opponentCurrentDist + 2) contextBonus += 3; // I'm behind
-        if (tokens >= 2 && myCurrentDist <= 6) contextBonus += 2; // Endgame with tokens
-        
-        // Min-max score: prioritize self-help, then opponent-harm
-        const score = (selfBenefit * 3) + (opponentHarm * 2) + algorithmBonus + contextBonus;
-        
-        if (score > bestScore) {
-          bestScore = score;
-          bestOption = {
-            remove: removeWall,
-            place: placePos,
-            score: score,
-            selfBenefit: selfBenefit,
-            opponentHarm: opponentHarm,
-            myNewDist: myNewDist,
-            opponentNewDist: opponentNewDist,
-            reason: `Self: ${selfBenefit > 0 ? '+' : ''}${selfBenefit}, Opponent: ${opponentHarm > 0 ? '+' : ''}${opponentHarm}`
-          };
-        }
-        
-        evaluationCount++;
-      }
-      if (evaluationCount >= maxEvaluations) break;
-    }
-
-    return bestOption;
-  };
-
-  const shouldSabotageOverMove = (sabotageOption, movementBenefit, player) => {
-    if (!sabotageOption) return false;
-    
-    // Movement benefit: how much closer to cheese we get by moving
-    const moveAdvantage = Math.min(2, movementBenefit); // Max 2 steps per turn
-    
-    // Sabotage total benefit
-    const sabotageAdvantage = sabotageOption.selfBenefit + (sabotageOption.opponentHarm * 0.8);
-    
-    // Only sabotage if it provides more total strategic value than moving
-    return sabotageAdvantage > moveAdvantage + 1; // +1 threshold for move preference
-  };
-
-  const validateSabotageAction = (removePos, placePos, testMaze) => {
-    // Create a temporary maze to test the sabotage
-    const tempMaze = testMaze.map(row => [...row]);
-    tempMaze[removePos.y][removePos.x] = 0;
-    tempMaze[placePos.y][placePos.x] = 1;
-   
-    // Check if both mice can still reach the cheese
-    const redPath = findPath(redPos, cheesePos, 'bfs', tempMaze);
-    const bluePath = findPath(bluePos, cheesePos, 'bfs', tempMaze);
-   
-    // Both mice must have a valid path
-    return redPath !== null && bluePath !== null;
-  };
-
-  // Legacy function removed - replaced by evaluateAllSabotageOptions
-
-  const makeMove = async () => {
+  // Memoize makeMove to prevent unnecessary hook re-runs
+  const makeMove = useCallback(async () => {
     if (gameOver) return;
     if (isProcessingRef.current) return; // prevent overlap
     isProcessingRef.current = true;
+
+    try {
 
     const player = currentPlayer;
     const algorithm = player === 'red' ? redAlgorithm : blueAlgorithm;
@@ -803,23 +158,23 @@ const MouseMaze = () => {
     let resultingMaze = maze;
     let resultingRedPos = redPos;
     let resultingBluePos = bluePos;
-
+   
     // Show thinking animation
     const calcSteps = [`${player.toUpperCase()} Mouse is thinking...`];
     calcSteps.push(`Step 1: Using ${algorithm.toUpperCase()} algorithm from (${myPos.x},${myPos.y}) to cheese (${cheesePos.x},${cheesePos.y})`);
    
     // Compute path first; if no path, skip visualization to avoid confusing flashes
-    const previewPath = findPath(myPos, cheesePos, algorithm, maze);
+      const previewPath = findPath(algorithm, myPos, cheesePos, maze);
     if (previewPath) {
-      const pathSteps = await visualizePathfinding(myPos, cheesePos, algorithm, player);
-      calcSteps.push(...pathSteps);
+      const pathSteps = await visualizePathfindingHook(myPos, cheesePos, algorithm, player);
+    calcSteps.push(...pathSteps);
     } else {
       calcSteps.push(`No path available; skipping visualization`);
     }
    
     // Calculate paths
-    const myPath = previewPath || findPath(myPos, cheesePos, algorithm, maze);
-    const opponentPath = findPath(opponentPos, cheesePos, opponentAlgorithm, maze);
+    const myPath = previewPath || findPath(algorithm, myPos, cheesePos, maze);
+    const opponentPath = findPath(opponentAlgorithm, opponentPos, cheesePos, maze);
    
     const myDist = myPath ? myPath.length - 1 : 999;
     const opponentDist = opponentPath ? opponentPath.length - 1 : 999;
@@ -829,23 +184,18 @@ const MouseMaze = () => {
     calcSteps.push(`Tokens remaining: ${tokens}`);
    
     // Force move if haven't moved recently
-    if (turnsSince >= 1) {
+    if (turnsSince >= FORCED_MOVE_THRESHOLD) {
       calcSteps.push(`⚠️ FORCED to move (turn limit exceeded)`);
       addToLog(`FORCED to move (turn limit)`, player);
      
       if (myPath && myPath.length > 1) {
-        const steps = Math.min(2, myPath.length - 1);
+        const steps = Math.min(MAX_MOVES_PER_TURN, myPath.length - 1);
         const newPos = myPath[steps];
        
-        if (player === 'red') {
-          setRedPos(newPos);
-          resultingRedPos = newPos;
-        } else {
-          setBluePos(newPos);
-          resultingBluePos = newPos;
-        }
-       
-        setTurnsSinceMove(prev => ({ ...prev, [player]: 0 }));
+        updatePlayerPosition(player, newPos);
+        resultingRedPos = player === 'red' ? newPos : resultingRedPos;
+        resultingBluePos = player === 'blue' ? newPos : resultingBluePos;
+        
         calcSteps.push(`🏃 DECISION: MOVE (Distance=${myDist})`);
         addToLog(`Moved to (${newPos.x}, ${newPos.y})`, player);
        
@@ -857,13 +207,24 @@ const MouseMaze = () => {
       // Strategic decision using min-max evaluation
       calcSteps.push(`Step 3: Evaluating all strategic options...`);
      
-      const movementBenefit = myPath ? Math.min(2, myPath.length - 1) : 0;
+      const movementBenefit = myPath ? Math.min(MAX_MOVES_PER_TURN, myPath.length - 1) : 0;
       calcSteps.push(`Option 1: MOVE - Would advance ${movementBenefit} steps (distance: ${myDist} → ${Math.max(0, myDist - movementBenefit)})`);
      
       let bestSabotage = null;
       if (tokens > 0) {
         calcSteps.push(`Option 2: SABOTAGE - Analyzing all wall combinations...`);
-        bestSabotage = evaluateAllSabotageOptions(player, myPos, opponentPos, myDist, opponentDist, tokens);
+        bestSabotage = evaluateAllSabotageOptions(
+          player,
+          myPos,
+          opponentPos,
+          cheesePos,
+          myDist,
+          opponentDist,
+          tokens,
+          algorithm,
+          opponentAlgorithm,
+          maze
+        );
         
         if (bestSabotage) {
           calcSteps.push(`  Best sabotage found: ${bestSabotage.reason}`);
@@ -876,7 +237,7 @@ const MouseMaze = () => {
       }
       
       // Decision: Sabotage vs Move
-      const shouldSabotage = bestSabotage && shouldSabotageOverMove(bestSabotage, movementBenefit, player);
+      const shouldSabotage = bestSabotage && shouldSabotageOverMove(bestSabotage, movementBenefit);
       
       if (shouldSabotage) {
         // Execute sabotage
@@ -886,8 +247,8 @@ const MouseMaze = () => {
           setMaze(newMaze);
           resultingMaze = newMaze;
          
-          setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
-          setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
+          consumeSabotageToken(player);
+          incrementTurnsSinceMove(player);
          
         calcSteps.push(`🎯 DECISION: SABOTAGE - Strategic advantage detected!`);
         calcSteps.push(`  Benefit: ${bestSabotage.reason}`);
@@ -898,15 +259,10 @@ const MouseMaze = () => {
         const steps = Math.min(2, myPath.length - 1);
         const newPos = myPath[steps];
        
-        if (player === 'red') {
-          setRedPos(newPos);
-          resultingRedPos = newPos;
-        } else {
-          setBluePos(newPos);
-          resultingBluePos = newPos;
-        }
+        updatePlayerPosition(player, newPos);
+        resultingRedPos = player === 'red' ? newPos : resultingRedPos;
+        resultingBluePos = player === 'blue' ? newPos : resultingBluePos;
        
-        setTurnsSinceMove(prev => ({ ...prev, [player]: 0 }));
         calcSteps.push(`🏃 DECISION: MOVE - Movement provides better strategic value`);
         calcSteps.push(`  Distance: ${myDist} → ${Math.max(0, myDist - steps)}, Opponent: ${opponentDist}`);
         addToLog(`Moved to (${newPos.x}, ${newPos.y})`, player);
@@ -921,49 +277,49 @@ const MouseMaze = () => {
    
     // Update paths using the resulting maze and positions to avoid one-turn lag
     updatePaths(resultingMaze, resultingRedPos, resultingBluePos);
-   
-    // Switch player
-    setCurrentPlayer(player === 'red' ? 'blue' : 'red');
-    if (player === 'blue') {
-      setTurn(prev => prev + 1);
+    
+      // Switch player (handles turn increment)
+      switchPlayer();
+    } finally {
+      isProcessingRef.current = false;
     }
-    isProcessingRef.current = false;
-  };
-
-  const handleWin = (player) => {
-    setWinner(player);
-    setGameOver(true);
-    setIsPlaying(false);
-    addToLog(`🎉 ${player.toUpperCase()} MOUSE WINS!`, 'system');
-  };
-
-  const addToLog = (message, type) => {
-    setGameLog(prev => [...prev, { message, type, turn }]);
-  };
+  }, [
+    gameOver,
+    currentPlayer,
+    redPos,
+    bluePos,
+    redAlgorithm,
+    blueAlgorithm,
+    cheesePos,
+    maze,
+    sabotageTokens,
+    turnsSinceMove,
+    visualizePathfindingHook,
+    evaluateAllSabotageOptions,
+    shouldSabotageOverMove,
+    updatePlayerPosition,
+    consumeSabotageToken,
+    incrementTurnsSinceMove,
+    setMaze,
+    setCalculationSteps,
+    updatePaths,
+    switchPlayer,
+    handleWin,
+    addToLog,
+    findPath,
+    FORCED_MOVE_THRESHOLD,
+    MAX_MOVES_PER_TURN
+  ]);
 
   const togglePlay = () => {
     setIsPlaying(!isPlaying);
   };
 
-  useEffect(() => {
-    if (isPlaying && !gameOver) {
-      playIntervalRef.current = setInterval(() => {
-        makeMove();
-      }, playSpeed);
-    } else {
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-      }
-    }
-   
-    return () => {
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-      }
-    };
-  }, [isPlaying, gameOver, currentPlayer, redPos, bluePos, maze, sabotageTokens, turnsSinceMove, redAlgorithm, blueAlgorithm, playSpeed]);
+  // Autoplay hook - manages scheduling
+  useAutoplay(isPlaying, gameOver, makeMove, isProcessingRef, playSpeed, playIntervalRef);
 
-  const getCellClass = (x, y) => {
+  // Memoize getCellClass for performance (called 100 times per render)
+  const getCellClass = useCallback((x, y) => {
     let classes = 'aspect-square flex items-center justify-center text-xl border-2 rounded-lg transition-all relative ';
    
     // Base cell type
@@ -973,10 +329,11 @@ const MouseMaze = () => {
       classes += 'bg-gradient-to-br from-gray-50 to-white border-gray-200';
     }
    
-    // Search visualization effects (in order of priority)
-    const exploringCell = exploringCells.find(c => c.x === x && c.y === y);
-    const visitedCell = visitedCells.find(c => c.x === x && c.y === y);
-    const isThinking = thinkingCells.some(tc => tc.x === x && tc.y === y);
+    // Search visualization effects (in order of priority) - O(1) lookup
+    const cellKey = `${x},${y}`;
+    const exploringCell = exploringCellsSet.get(cellKey);
+    const visitedCell = visitedCellsSet.get(cellKey);
+    const isThinking = thinkingCellsSet.has(cellKey);
    
     if (exploringCell) {
       // Currently exploring - different colors for bidirectional search
@@ -1029,29 +386,32 @@ const MouseMaze = () => {
     }
    
     return classes;
-  };
+  }, [maze, redPos, bluePos, cheesePos, exploringCellsSet, visitedCellsSet, thinkingCellsSet]);
 
-  const getCellContent = (x, y) => {
+  // Memoize getCellContent
+  const getCellContent = useCallback((x, y) => {
     if (x === redPos.x && y === redPos.y) return '🐭';
     if (x === bluePos.x && y === bluePos.y) return '🐹';
     if (x === cheesePos.x && y === cheesePos.y) return '🧀';
     return '';
-  };
+  }, [redPos, bluePos, cheesePos]);
 
-  const renderPathDot = (x, y) => {
+  // Memoize renderPathDot with O(1) Set lookups
+  const renderPathDot = useCallback((x, y) => {
+    const cellKey = `${x},${y}`;
     const dots = [];
-    if (showPaths && currentPaths.red && currentPaths.red.some(p => p.x === x && p.y === y)) {
+    if (redPathSet.has(cellKey)) {
       dots.push(
         <div key="red" className="absolute top-1 left-1 w-2 h-2 bg-red-500 rounded-full opacity-70" />
       );
     }
-    if (showPaths && currentPaths.blue && currentPaths.blue.some(p => p.x === x && p.y === y)) {
+    if (bluePathSet.has(cellKey)) {
       dots.push(
         <div key="blue" className="absolute top-1 right-1 w-2 h-2 bg-blue-500 rounded-full opacity-70" />
       );
     }
     return dots;
-  };
+  }, [redPathSet, bluePathSet]);
 
   const getDistance = (player) => {
     const path = player === 'red' ? currentPaths.red : currentPaths.blue;
@@ -1076,65 +436,28 @@ const MouseMaze = () => {
               {/* Centered Controls */}
               <div className="flex flex-col items-center gap-4 mb-6">
                 {/* Main Control Buttons */}
-                <div className="flex gap-3 items-center">
-                  <button
-                    onClick={togglePlay}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg transition-all shadow-lg"
-                  >
-                    {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-                    {isPlaying ? 'Pause' : 'Auto Play'}
-                  </button>
-                  <button
-                    onClick={makeMove}
-                    disabled={gameOver}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-lg transition-all shadow-lg disabled:opacity-50"
-                  >
-                    <ChevronRight size={20} />
-                    Step
-                  </button>
-                  <button
-                    onClick={resetGame}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white rounded-lg transition-all shadow-lg"
-                  >
-                    <RotateCcw size={20} />
-                    Reset
-                  </button>
-                  <button
-                    onClick={randomizeMaze}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg transition-all shadow-lg"
-                  >
-                    <Shuffle size={20} />
-                    New Maze
-                  </button>
-                  <button
-                    onClick={() => setShowPaths(!showPaths)}
-                    className={`p-2 rounded-lg transition-all ${
-                      showPaths
-                        ? 'bg-purple-600 text-white'
-                        : 'bg-gray-700 text-gray-400'
-                    }`}
-                  >
-                    <MapPin size={20} />
-                  </button>
-                  <button
-                    onClick={() => setIsFullscreen(v => !v)}
-                    className="p-2 rounded-lg transition-all bg-gray-700 text-gray-200 hover:bg-gray-600"
-                    title={isFullscreen ? 'Exit Full Screen' : 'Full Screen'}
-                  >
-                    {isFullscreen ? <Minimize2 size={20} /> : <Maximize2 size={20} />}
-                  </button>
-                </div>
+                <Controls
+                  isPlaying={isPlaying}
+                  togglePlay={togglePlay}
+                  makeMove={makeMove}
+                  resetGame={handleResetGame}
+                  randomizeMaze={handleRandomizeMaze}
+                  showPaths={showPaths}
+                  setShowPaths={setShowPaths}
+                  isFullscreen={isFullscreen}
+                  setIsFullscreen={setIsFullscreen}
+                />
                 
                 {/* Speed Control */}
                 <div className="flex items-center gap-3 bg-gray-800/50 rounded-lg px-6 py-3">
                   <label className="text-sm text-gray-300 font-medium">Speed:</label>
                   <input
                     type="range"
-                    min="500"
-                    max="5000"
-                    step="100"
-                    value={5500 - playSpeed}
-                    onChange={(e) => setPlaySpeed(5500 - Number(e.target.value))}
+                    min={MIN_SPEED_MS}
+                    max={MAX_SPEED_MS}
+                    step={SPEED_SLIDER_STEP}
+                    value={SPEED_CALC_OFFSET - playSpeed}
+                    onChange={(e) => setPlaySpeed(SPEED_CALC_OFFSET - Number(e.target.value))}
                     className="w-48 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                   />
                   <span className="text-xs text-gray-400 w-12 text-right">
@@ -1164,208 +487,44 @@ const MouseMaze = () => {
               </div>
 
               {/* Algorithm Selection */}
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-red-900/30 rounded-xl p-4 border border-red-700">
-                  <label className="block text-sm font-bold text-red-400 mb-2">Red Mouse Algorithm</label>
-                  <select
-                    value={redAlgorithm}
-                    onChange={(e) => setRedAlgorithm(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg focus:border-red-400 transition-colors"
-                  >
-                    <option value="astar">A* Search</option>
-                    <option value="bfs">Breadth-First Search</option>
-                    <option value="dfs">Depth-First Search</option>
-                    <option value="bidirectional">Bidirectional</option>
-                  </select>
-                </div>
-                <div className="bg-blue-900/30 rounded-xl p-4 border border-blue-700">
-                  <label className="block text-sm font-bold text-blue-400 mb-2">Blue Mouse Algorithm</label>
-                  <select
-                    value={blueAlgorithm}
-                    onChange={(e) => setBlueAlgorithm(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg focus:border-blue-400 transition-colors"
-                  >
-                    <option value="astar">A* Search</option>
-                    <option value="bfs">Breadth-First Search</option>
-                    <option value="dfs">Depth-First Search</option>
-                    <option value="bidirectional">Bidirectional</option>
-                  </select>
-                </div>
-              </div>
+              <AlgorithmSelectors
+                redAlgorithm={redAlgorithm}
+                setRedAlgorithm={setRedAlgorithm}
+                blueAlgorithm={blueAlgorithm}
+                setBlueAlgorithm={setBlueAlgorithm}
+              />
 
               {/* Maze Grid */}
               <div className={`relative bg-gradient-to-br from-gray-900 to-gray-800 p-3 rounded-xl shadow-inner mx-auto ${isFullscreen ? 'max-w-[800px] md:max-w-[900px]' : 'max-w-[520px] md:max-w-[640px]'}`}>
-                <div className="grid grid-cols-10 gap-0.5">
-                  {maze.map((row, y) =>
-                    row.map((cell, x) => (
-                      <div
-                        key={`${x}-${y}`}
-                        className={getCellClass(x, y)}
-                      >
-                        {getCellContent(x, y)}
-                        {renderPathDot(x, y)}
+                <MazeGrid
+                  maze={maze}
+                  getCellClass={getCellClass}
+                  getCellContent={getCellContent}
+                  renderPathDot={renderPathDot}
+                />
+                <WinnerOverlay winner={winner} resetGame={handleResetGame} randomizeMaze={handleRandomizeMaze} />
                       </div>
-                    ))
-                  )}
-                </div>
-                {winner && (
-                  <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 rounded-xl">
-                    <div className="bg-white/90 px-6 py-4 rounded-lg shadow-xl text-center">
-                      <div className="text-2xl font-bold text-gray-900 mb-2">{winner.toUpperCase()} MOUSE WINS!</div>
-                      <div className="flex gap-3 justify-center">
-                        <button
-                          onClick={resetGame}
-                          className="px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white rounded-lg shadow"
-                        >
-                          Play Again
-                        </button>
-                        <button
-                          onClick={randomizeMaze}
-                          className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg shadow"
-                        >
-                          New Maze
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
 
               {/* Sabotage Tokens */}
-              <div className="grid grid-cols-2 gap-4 mt-6">
-                <div className="bg-red-900/30 rounded-xl p-4 border border-red-700">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-red-400">Red Sabotage Tokens</span>
-                    <div className="flex gap-2">
-                      {[...Array(3)].map((_, i) => (
-                        <div
-                          key={i}
-                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                            i < sabotageTokens.red
-                              ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-500/50'
-                              : 'bg-gray-700'
-                          }`}
-                        >
-                          <Zap size={18} className="text-white" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-blue-900/30 rounded-xl p-4 border border-blue-700">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-blue-400">Blue Sabotage Tokens</span>
-                    <div className="flex gap-2">
-                      {[...Array(3)].map((_, i) => (
-                        <div
-                          key={i}
-                          className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${
-                            i < sabotageTokens.blue
-                              ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/50'
-                              : 'bg-gray-700'
-                          }`}
-                        >
-                          <Zap size={18} className="text-white" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <TokenDisplay sabotageTokens={sabotageTokens} />
 
               {/* Winner overlay now displayed above the board */}
-            </div>
-          </div>
+                </div>
+              </div>
 
           {/* Side Panel */}
           <div className="lg:col-span-1 space-y-6">
             {/* AI Calculation Display */}
-            <div className="bg-gradient-to-br from-gray-900 to-gray-800 text-gray-100 rounded-2xl shadow-2xl p-5 border border-gray-700">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-blue-500/20 rounded-lg">
-                  <Brain className="text-blue-400" size={24} />
-                </div>
-                <h3 className="font-bold text-lg">AI Calculation Process</h3>
-              </div>
-              <div className="space-y-2 text-sm font-mono max-h-64 overflow-y-auto">
-                {calculationSteps.length > 0 ? (
-                  calculationSteps.map((step, i) => (
-                    <div
-                      key={i}
-                      className={`
-                        ${step.includes('DECISION') ? 'text-green-400 font-bold' : ''}
-                        ${step.includes('FORCED') ? 'text-yellow-400' : ''}
-                        ${step.includes('Step') ? 'text-blue-400 mt-2' : ''}
-                        ${step.includes('Exploring') || step.includes('Level') || step.includes('Depth') ? 'text-gray-400 ml-2' : ''}
-                        ${!step.includes('Step') && !step.includes('Exploring') && !step.includes('Level') && !step.includes('Depth') ? 'text-gray-300' : ''}
-                      `}
-                    >
-                      {step}
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-gray-500">Waiting for next turn...</div>
-                )}
-              </div>
-            </div>
+            <AICalculationPanel calculationSteps={calculationSteps} />
 
             {/* Game Statistics */}
-            <div className="bg-gradient-to-br from-purple-900/50 to-pink-900/50 backdrop-blur-lg rounded-2xl shadow-2xl p-5 border border-purple-700">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-purple-500/20 rounded-lg">
-                  <Activity className="text-purple-400" size={24} />
-                </div>
-                <h3 className="font-bold text-lg text-white">Game Statistics</h3>
-              </div>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between text-gray-300">
-                  <span>Turns Since Move (Red):</span>
-                  <span className={`font-bold ${turnsSinceMove.red >= 1 ? 'text-yellow-400' : 'text-green-400'}`}>
-                    {turnsSinceMove.red}
-                  </span>
-                </div>
-                <div className="flex justify-between text-gray-300">
-                  <span>Turns Since Move (Blue):</span>
-                  <span className={`font-bold ${turnsSinceMove.blue >= 1 ? 'text-yellow-400' : 'text-green-400'}`}>
-                    {turnsSinceMove.blue}
-                  </span>
-                </div>
-                <div className="h-px bg-purple-700 my-2"></div>
-                <div className="flex justify-between text-gray-300">
-                  <span>Path Visualization:</span>
-                  <span className={`font-bold ${showPaths ? 'text-green-400' : 'text-gray-500'}`}>
-                    {showPaths ? 'ON' : 'OFF'}
-                  </span>
-                </div>
-              </div>
-            </div>
+            <StatsPanel turnsSinceMove={turnsSinceMove} showPaths={showPaths} />
 
             {/* Game Log */}
-            <div className="bg-gradient-to-br from-gray-900/50 to-gray-800/50 backdrop-blur-lg rounded-2xl shadow-2xl p-5 border border-gray-700">
-              <h3 className="font-bold text-lg text-white mb-4">Game Log</h3>
-              <div className="h-72 overflow-y-auto space-y-2 text-sm">
-                {gameLog.map((entry, i) => (
-                  <div
-                    key={i}
-                    className={`p-2 rounded-lg border ${
-                      entry.type === 'red'
-                        ? 'bg-red-900/30 border-red-700 text-red-300'
-                        : entry.type === 'blue'
-                        ? 'bg-blue-900/30 border-blue-700 text-blue-300'
-                        : 'bg-yellow-900/30 border-yellow-700 text-yellow-300'
-                    }`}
-                  >
-                    <span className="font-semibold">Turn {entry.turn}:</span> {entry.message}
+            <GameLog gameLog={gameLog} />
+                        </div>
+                    </div>
                   </div>
-                ))}
-                {gameLog.length === 0 && (
-                  <div className="text-gray-500">Game events will appear here...</div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
       {isFullscreen && (
         <div className="fixed inset-0 z-[999] bg-black">
           <div className="absolute top-3 right-3">
@@ -1376,25 +535,25 @@ const MouseMaze = () => {
             >
               <Minimize2 size={20} />
             </button>
-          </div>
+                </div>
           <div className="w-full h-full flex items-center justify-center">
             <div className="relative flex items-center justify-center">
               {/* Left tokens */}
               <div className="hidden md:flex flex-col gap-3 items-center mr-6">
-                {[...Array(3)].map((_, i) => (
-                  <div
+                      {[...Array(3)].map((_, i) => (
+                        <div
                     key={`fs-left-${i}`}
                     className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
                       i < sabotageTokens.red
                         ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-500/50'
-                        : 'bg-gray-700'
-                    }`}
-                  >
+                              : 'bg-gray-700'
+                          }`}
+                        >
                     <Zap size={20} className="text-white" />
-                  </div>
-                ))}
+                        </div>
+                      ))}
                 <span className="mt-1 text-sm text-red-300">Red</span>
-              </div>
+                    </div>
               {/* Board */}
               <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 p-5 rounded-xl shadow-inner w-[65vw] md:w-[60vw] max-w-[800px] mx-auto">
                 <div className="grid grid-cols-10 gap-0.5">
@@ -1406,10 +565,10 @@ const MouseMaze = () => {
                       >
                         {getCellContent(x, y)}
                         {renderPathDot(x, y)}
-                      </div>
-                    ))
-                  )}
-                </div>
+                    </div>
+                  ))
+                )}
+              </div>
                 {/* Fullscreen controls */}
                 <div className="absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-3">
                   <button
@@ -1419,29 +578,29 @@ const MouseMaze = () => {
                     {isPlaying ? <Pause size={20} /> : <Play size={20} />}
                     {isPlaying ? 'Pause' : 'Auto Play'}
                   </button>
-                </div>
+            </div>
                 {winner && (
                   <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 rounded-xl">
                     <div className="bg-white/90 px-6 py-4 rounded-lg shadow-xl text-center">
                       <div className="text-2xl font-bold text-gray-900 mb-2">{winner.toUpperCase()} MOUSE WINS!</div>
                       <div className="flex gap-3 justify-center">
                         <button
-                          onClick={resetGame}
+                          onClick={handleResetGame}
                           className="px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white rounded-lg shadow"
                         >
                           Play Again
                         </button>
                         <button
-                          onClick={randomizeMaze}
+                          onClick={handleRandomizeMaze}
                           className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg shadow"
                         >
                           New Maze
                         </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                </div>
               </div>
+                </div>
+                )}
+                </div>
               {/* Right tokens */}
               <div className="hidden md:flex flex-col gap-3 items-center ml-6">
                 {[...Array(3)].map((_, i) => (

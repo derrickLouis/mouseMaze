@@ -62,8 +62,50 @@ npm start
 ├── public/
 │   └── index.html
 ├── src/
-│   ├── index.js
-│   └── MouseMaze.jsx
+│   ├── algorithms/        # Pathfinding algorithms (BFS, A*, DFS, Bidirectional)
+│   │   ├── bfs.js
+│   │   ├── astar.js
+│   │   ├── dfs.js
+│   │   ├── bidirectional.js
+│   │   └── index.js
+│   ├── components/        # React UI components
+│   │   ├── MazeGrid/
+│   │   ├── Controls/
+│   │   ├── SidePanel/      # AI calc, stats, game log
+│   │   ├── AlgorithmSelectors/
+│   │   ├── WinnerOverlay/
+│   │   └── Tokens/
+│   ├── core/              # Pure game logic (no React)
+│   │   ├── constants.js
+│   │   ├── engine.js
+│   │   └── maze.js
+│   ├── hooks/             # Custom React hooks
+│   │   └── useVisualization.js
+│   ├── __tests__/         # Test files
+│   │   ├── algorithms/
+│   │   └── core/
+│   ├── App.js
+│   └── MouseMaze.jsx      # Main orchestrator component
 ├── package.json
 └── README.md
 ```
+
+## Testing
+
+Run the test suite:
+```bash
+npm test
+```
+
+**Test Coverage:**
+- ✅ 85 tests passing
+- ✅ Algorithm correctness (BFS, A*, DFS, Bidirectional)
+- ✅ Core game engine logic
+- ✅ Maze generation and validation
+
+## Architecture Highlights
+
+- **Modular Design**: Separated concerns with pure functions for game logic, isolated algorithms, and reusable React components
+- **Test-Driven**: Comprehensive test coverage ensures algorithm correctness and game logic reliability
+- **Performance**: Optimized pathfinding with visualization that doesn't block the UI
+- **Maintainable**: Clear separation between game state, UI, and algorithms makes the codebase easy to extend
