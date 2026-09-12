@@ -817,25 +817,32 @@ const MouseMaze = () => {
     calcSteps.push(`Current distances: Me=${myDist}, Opponent=${opponentDist}`);
     calcSteps.push(`Tokens remaining: ${tokens}`);
    
+    // Track post-move state locally since setState updates don't apply until re-render
+    let finalMaze = maze;
+    let finalRedPos = redPos;
+    let finalBluePos = bluePos;
+
     // Force move if haven't moved recently
     if (turnsSince >= 1) {
       calcSteps.push(`⚠️ FORCED to move (turn limit exceeded)`);
       addToLog(`FORCED to move (turn limit)`, player);
-     
+
       if (myPath && myPath.length > 1) {
         const steps = Math.min(2, myPath.length - 1);
         const newPos = myPath[steps];
-       
+
         if (player === 'red') {
           setRedPos(newPos);
+          finalRedPos = newPos;
         } else {
           setBluePos(newPos);
+          finalBluePos = newPos;
         }
-       
+
         setTurnsSinceMove(prev => ({ ...prev, [player]: 0 }));
         calcSteps.push(`🏃 DECISION: MOVE (Distance=${myDist})`);
         addToLog(`Moved to (${newPos.x}, ${newPos.y})`, player);
-       
+
         if (newPos.x === cheesePos.x && newPos.y === cheesePos.y) {
           handleWin(player);
         }
@@ -867,14 +874,15 @@ const MouseMaze = () => {
       
       if (shouldSabotage) {
         // Execute sabotage
-          const newMaze = maze.map(row => [...row]);
+        const newMaze = maze.map(row => [...row]);
         newMaze[bestSabotage.remove.y][bestSabotage.remove.x] = 0; // Remove wall
         newMaze[bestSabotage.place.y][bestSabotage.place.x] = 1;   // Place wall
-          setMaze(newMaze);
-         
-          setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
-          setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
-         
+        setMaze(newMaze);
+        finalMaze = newMaze;
+
+        setSabotageTokens(prev => ({ ...prev, [player]: prev[player] - 1 }));
+        setTurnsSinceMove(prev => ({ ...prev, [player]: prev[player] + 1 }));
+
         calcSteps.push(`🎯 DECISION: SABOTAGE - Strategic advantage detected!`);
         calcSteps.push(`  Benefit: ${bestSabotage.reason}`);
         addToLog(`SABOTAGE: Wall (${bestSabotage.remove.x},${bestSabotage.remove.y}) → (${bestSabotage.place.x},${bestSabotage.place.y})`, player);
@@ -883,28 +891,30 @@ const MouseMaze = () => {
         // Move
         const steps = Math.min(2, myPath.length - 1);
         const newPos = myPath[steps];
-       
+
         if (player === 'red') {
           setRedPos(newPos);
+          finalRedPos = newPos;
         } else {
           setBluePos(newPos);
+          finalBluePos = newPos;
         }
-       
+
         setTurnsSinceMove(prev => ({ ...prev, [player]: 0 }));
         calcSteps.push(`🏃 DECISION: MOVE - Movement provides better strategic value`);
         calcSteps.push(`  Distance: ${myDist} → ${Math.max(0, myDist - steps)}, Opponent: ${opponentDist}`);
         addToLog(`Moved to (${newPos.x}, ${newPos.y})`, player);
-       
+
         if (newPos.x === cheesePos.x && newPos.y === cheesePos.y) {
           handleWin(player);
         }
       }
     }
-   
+
     setCalculationSteps(calcSteps);
-   
-    // Update paths after move
-    updatePaths(maze, redPos, bluePos);
+
+    // Update paths using the post-move state, not the stale pre-move closure values
+    updatePaths(finalMaze, finalRedPos, finalBluePos);
    
     // Switch player
     setCurrentPlayer(player === 'red' ? 'blue' : 'red');
