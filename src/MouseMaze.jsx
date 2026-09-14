@@ -1074,6 +1074,7 @@ const MouseMaze = () => {
                 <div className="flex gap-3 items-center">
                   <button
                     onClick={togglePlay}
+                    aria-label={isPlaying ? 'Pause' : 'Auto Play'}
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg transition-all shadow-lg"
                   >
                     {isPlaying ? <Pause size={20} /> : <Play size={20} />}
@@ -1082,6 +1083,7 @@ const MouseMaze = () => {
                   <button
                     onClick={makeMove}
                     disabled={gameOver}
+                    aria-label="Step"
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white rounded-lg transition-all shadow-lg disabled:opacity-50"
                   >
                     <ChevronRight size={20} />
@@ -1089,6 +1091,7 @@ const MouseMaze = () => {
                   </button>
                   <button
                     onClick={resetGame}
+                    aria-label="Reset"
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white rounded-lg transition-all shadow-lg"
                   >
                     <RotateCcw size={20} />
@@ -1096,6 +1099,7 @@ const MouseMaze = () => {
                   </button>
                   <button
                     onClick={randomizeMaze}
+                    aria-label="New Maze"
                     className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg transition-all shadow-lg"
                   >
                     <Shuffle size={20} />
@@ -1103,6 +1107,8 @@ const MouseMaze = () => {
                   </button>
                   <button
                     onClick={() => setShowPaths(!showPaths)}
+                    aria-label={showPaths ? 'Hide paths' : 'Show paths'}
+                    aria-pressed={showPaths}
                     className={`p-2 rounded-lg transition-all ${
                       showPaths
                         ? 'bg-purple-600 text-white'
@@ -1112,17 +1118,19 @@ const MouseMaze = () => {
                     <MapPin size={20} />
                   </button>
                 </div>
-                
+
                 {/* Speed Control */}
                 <div className="flex items-center gap-3 bg-gray-800/50 rounded-lg px-6 py-3">
-                  <label className="text-sm text-gray-300 font-medium">Speed:</label>
+                  <label htmlFor="speed-control" className="text-sm text-gray-300 font-medium">Speed:</label>
                   <input
+                    id="speed-control"
                     type="range"
                     min="500"
                     max="5000"
                     step="100"
                     value={5500 - playSpeed}
                     onChange={(e) => setPlaySpeed(5500 - Number(e.target.value))}
+                    aria-label="Playback speed"
                     className="w-48 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                   />
                   <span className="text-xs text-gray-400 w-12 text-right">
