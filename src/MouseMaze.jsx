@@ -1091,6 +1091,9 @@ const MouseMaze = () => {
                   </button>
                   <button
                     onClick={() => setShowPaths(!showPaths)}
+                    aria-label={showPaths ? 'Hide paths' : 'Show paths'}
+                    aria-pressed={showPaths}
+                    title={showPaths ? 'Hide paths' : 'Show paths'}
                     className={`p-2 rounded-lg transition-all ${
                       showPaths
                         ? 'bg-purple-600 text-white'
@@ -1100,17 +1103,19 @@ const MouseMaze = () => {
                     <MapPin size={20} />
                   </button>
                 </div>
-                
+
                 {/* Speed Control */}
                 <div className="flex items-center gap-3 bg-gray-800/50 rounded-lg px-6 py-3">
-                  <label className="text-sm text-gray-300 font-medium">Speed:</label>
+                  <label htmlFor="speed-control" className="text-sm text-gray-300 font-medium">Speed:</label>
                   <input
+                    id="speed-control"
                     type="range"
                     min="500"
                     max="5000"
                     step="100"
                     value={5500 - playSpeed}
                     onChange={(e) => setPlaySpeed(5500 - Number(e.target.value))}
+                    aria-label="Playback speed"
                     className="w-48 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
                   />
                   <span className="text-xs text-gray-400 w-12 text-right">
