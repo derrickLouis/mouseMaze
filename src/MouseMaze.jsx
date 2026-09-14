@@ -1,14 +1,9 @@
 import React, { useEffect, useRef, useCallback, useMemo } from 'react';
-import { Play, Pause, Zap, Minimize2 } from 'lucide-react';
 import MazeGrid from './components/MazeGrid/MazeGrid.jsx';
 import Controls from './components/Controls/Controls.jsx';
 import {
   MAX_MOVES_PER_TURN,
   FORCED_MOVE_THRESHOLD,
-  MIN_SPEED_MS,
-  MAX_SPEED_MS,
-  SPEED_SLIDER_STEP,
-  SPEED_CALC_OFFSET,
   MAZE_SIZE,
   CELL_TYPES
 } from './core/constants';
@@ -23,6 +18,8 @@ import GameLog from './components/SidePanel/GameLog.jsx';
 import AlgorithmSelectors from './components/AlgorithmSelectors/AlgorithmSelectors.jsx';
 import WinnerOverlay from './components/WinnerOverlay/WinnerOverlay.jsx';
 import TokenDisplay from './components/Tokens/TokenDisplay.jsx';
+import SpeedControl from './components/SpeedControl/SpeedControl.jsx';
+import FullscreenView from './components/FullscreenView/FullscreenView.jsx';
 
 const MouseMaze = () => {
   // Game state hook
@@ -45,9 +42,6 @@ const MouseMaze = () => {
     incrementTurnsSinceMove, switchPlayer,
     handleWin, addToLog, consumeSabotageToken
   } = gameState;
-
-  // Visualization run ID ref (for cancellation)
-  const vizRunIdRef = useRef(0);
 
   // Processing guard ref (for preventing overlapping moves)
   const isProcessingRef = useRef(false);
@@ -132,10 +126,6 @@ const MouseMaze = () => {
         playIntervalRef.current = null;
       }
     });
-  };
-
-  const visualizePathfinding = async (start, goal, algorithm, player) => {
-    return await visualizePathfindingHook(start, goal, algorithm, player);
   };
 
   // Memoize makeMove to prevent unnecessary hook re-runs
@@ -256,7 +246,7 @@ const MouseMaze = () => {
         addToLog(`Strategic benefit: ${bestSabotage.reason}`, player);
       } else if (myPath && myPath.length > 1) {
         // Move
-        const steps = Math.min(2, myPath.length - 1);
+        const steps = Math.min(MAX_MOVES_PER_TURN, myPath.length - 1);
         const newPos = myPath[steps];
        
         updatePlayerPosition(player, newPos);
@@ -295,8 +285,6 @@ const MouseMaze = () => {
     sabotageTokens,
     turnsSinceMove,
     visualizePathfindingHook,
-    evaluateAllSabotageOptions,
-    shouldSabotageOverMove,
     updatePlayerPosition,
     consumeSabotageToken,
     incrementTurnsSinceMove,
@@ -305,10 +293,7 @@ const MouseMaze = () => {
     updatePaths,
     switchPlayer,
     handleWin,
-    addToLog,
-    findPath,
-    FORCED_MOVE_THRESHOLD,
-    MAX_MOVES_PER_TURN
+    addToLog
   ]);
 
   const togglePlay = () => {
@@ -446,24 +431,10 @@ const MouseMaze = () => {
                   setShowPaths={setShowPaths}
                   isFullscreen={isFullscreen}
                   setIsFullscreen={setIsFullscreen}
+                  gameOver={gameOver}
                 />
-                
-                {/* Speed Control */}
-                <div className="flex items-center gap-3 bg-gray-800/50 rounded-lg px-6 py-3">
-                  <label className="text-sm text-gray-300 font-medium">Speed:</label>
-                  <input
-                    type="range"
-                    min={MIN_SPEED_MS}
-                    max={MAX_SPEED_MS}
-                    step={SPEED_SLIDER_STEP}
-                    value={SPEED_CALC_OFFSET - playSpeed}
-                    onChange={(e) => setPlaySpeed(SPEED_CALC_OFFSET - Number(e.target.value))}
-                    className="w-48 h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                  />
-                  <span className="text-xs text-gray-400 w-12 text-right">
-                    {(playSpeed / 1000).toFixed(1)}s
-                  </span>
-                </div>
+
+                <SpeedControl playSpeed={playSpeed} setPlaySpeed={setPlaySpeed} />
               </div>
 
               {/* Status Bar */}
@@ -526,100 +497,19 @@ const MouseMaze = () => {
                     </div>
                   </div>
       {isFullscreen && (
-        <div className="fixed inset-0 z-[999] bg-black">
-          <div className="absolute top-3 right-3">
-            <button
-              onClick={() => setIsFullscreen(false)}
-              className="p-2 rounded-lg transition-all bg-gray-700 text-gray-200 hover:bg-gray-600"
-              title="Exit Full Screen"
-            >
-              <Minimize2 size={20} />
-            </button>
-                </div>
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="relative flex items-center justify-center">
-              {/* Left tokens */}
-              <div className="hidden md:flex flex-col gap-3 items-center mr-6">
-                      {[...Array(3)].map((_, i) => (
-                        <div
-                    key={`fs-left-${i}`}
-                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                      i < sabotageTokens.red
-                        ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-500/50'
-                              : 'bg-gray-700'
-                          }`}
-                        >
-                    <Zap size={20} className="text-white" />
-                        </div>
-                      ))}
-                <span className="mt-1 text-sm text-red-300">Red</span>
-                    </div>
-              {/* Board */}
-              <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 p-5 rounded-xl shadow-inner w-[65vw] md:w-[60vw] max-w-[800px] mx-auto">
-                <div className="grid grid-cols-10 gap-0.5">
-                  {maze.map((row, y) =>
-                    row.map((cell, x) => (
-                      <div
-                        key={`fs-${x}-${y}`}
-                        className={getCellClass(x, y)}
-                      >
-                        {getCellContent(x, y)}
-                        {renderPathDot(x, y)}
-                    </div>
-                  ))
-                )}
-              </div>
-                {/* Fullscreen controls */}
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-4 flex items-center gap-3">
-                  <button
-                    onClick={togglePlay}
-                    className="flex items-center gap-2 px-5 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg transition-all shadow-lg"
-                  >
-                    {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-                    {isPlaying ? 'Pause' : 'Auto Play'}
-                  </button>
-            </div>
-                {winner && (
-                  <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60 rounded-xl">
-                    <div className="bg-white/90 px-6 py-4 rounded-lg shadow-xl text-center">
-                      <div className="text-2xl font-bold text-gray-900 mb-2">{winner.toUpperCase()} MOUSE WINS!</div>
-                      <div className="flex gap-3 justify-center">
-                        <button
-                          onClick={handleResetGame}
-                          className="px-4 py-2 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white rounded-lg shadow"
-                        >
-                          Play Again
-                        </button>
-                        <button
-                          onClick={handleRandomizeMaze}
-                          className="px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white rounded-lg shadow"
-                        >
-                          New Maze
-                        </button>
-                </div>
-              </div>
-                </div>
-                )}
-                </div>
-              {/* Right tokens */}
-              <div className="hidden md:flex flex-col gap-3 items-center ml-6">
-                {[...Array(3)].map((_, i) => (
-                  <div
-                    key={`fs-right-${i}`}
-                    className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
-                      i < sabotageTokens.blue
-                        ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg shadow-blue-500/50'
-                        : 'bg-gray-700'
-                    }`}
-                  >
-                    <Zap size={20} className="text-white" />
-                  </div>
-                ))}
-                <span className="mt-1 text-sm text-blue-300">Blue</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        <FullscreenView
+          maze={maze}
+          getCellClass={getCellClass}
+          getCellContent={getCellContent}
+          renderPathDot={renderPathDot}
+          sabotageTokens={sabotageTokens}
+          isPlaying={isPlaying}
+          togglePlay={togglePlay}
+          winner={winner}
+          resetGame={handleResetGame}
+          randomizeMaze={handleRandomizeMaze}
+          onExit={() => setIsFullscreen(false)}
+        />
       )}
     </div>
   );

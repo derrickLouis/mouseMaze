@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 /**
  * Custom hook for managing autoplay functionality
@@ -60,7 +60,7 @@ export default function useAutoplay(isPlaying, gameOver, makeMove, isProcessingR
         playIntervalRef.current = null;
       }
     };
-  }, [isPlaying, gameOver, playSpeed, makeMove, isProcessingRef]);
+  }, [isPlaying, gameOver, playSpeed, makeMove, isProcessingRef, playIntervalRef]);
 
   return {
     playIntervalRef

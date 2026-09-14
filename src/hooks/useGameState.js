@@ -8,7 +8,7 @@ import {
   WALL_DENSITY,
   CELL_TYPES
 } from '../core/constants';
-import { getInitialMaze, isValidMove } from '../core/maze';
+import { getInitialMaze } from '../core/maze';
 import { findPath } from '../algorithms/index';
 
 export default function useGameState() {

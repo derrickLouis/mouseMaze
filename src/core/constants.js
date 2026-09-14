@@ -73,3 +73,11 @@ export const DEFAULT_ALGORITHMS = {
   RED: 'bfs',
   BLUE: 'astar'
 };
+
+// Algorithms offered in the UI. Keep the values in sync with findPath().
+export const ALGORITHM_OPTIONS = [
+  { value: 'astar', label: 'A* Search' },
+  { value: 'bfs', label: 'Breadth-First Search' },
+  { value: 'dfs', label: 'Depth-First Search' },
+  { value: 'bidirectional', label: 'Bidirectional' }
+];
