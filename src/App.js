@@ -1,11 +1,14 @@
 import MouseMaze from './MouseMaze';
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import './App.css';
 
 function App() {
   return (
-    <div className="App">
-      <MouseMaze />
-    </div>
+    <ErrorBoundary>
+      <div className="App">
+        <MouseMaze />
+      </div>
+    </ErrorBoundary>
   );
 }
 
