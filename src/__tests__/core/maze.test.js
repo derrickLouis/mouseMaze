@@ -2,7 +2,7 @@
  * Tests for Maze Generation
  */
 
-import { generateRandomMaze, isValidMove, getInitialMaze } from '../../core/maze.js';
+import { generateRandomMaze, isValidMove, getInitialMaze, ensureConnectivity } from '../../core/maze.js';
 import { MAZE_SIZE, INITIAL_POSITIONS, CELL_TYPES } from '../../core/constants.js';
 
 describe('Maze Generation', () => {
@@ -78,6 +78,31 @@ describe('Maze Generation', () => {
       expect(isValidMove({ x: MAZE_SIZE, y: 1 }, maze)).toBe(false);
       expect(isValidMove({ x: 1, y: -1 }, maze)).toBe(false);
       expect(isValidMove({ x: 1, y: MAZE_SIZE }, maze)).toBe(false);
+    });
+  });
+
+  describe('ensureConnectivity', () => {
+    test('leaves an already-connected maze untouched', () => {
+      const maze = getInitialMaze();
+      const original = maze.map(row => [...row]);
+      const pathfinder = jest.fn(() => [{ x: 1, y: 1 }, { x: 1, y: 2 }]);
+
+      ensureConnectivity(maze, { x: 1, y: 1 }, { x: 1, y: 2 }, pathfinder);
+
+      expect(maze).toEqual(original);
+      expect(pathfinder).toHaveBeenCalledWith({ x: 1, y: 1 }, { x: 1, y: 2 }, maze);
+    });
+
+    test('carves a path when none exists', () => {
+      const maze = Array(MAZE_SIZE).fill().map(() => Array(MAZE_SIZE).fill(CELL_TYPES.WALL));
+      const from = { x: 1, y: 1 };
+      const to = { x: 4, y: 4 };
+      const pathfinder = jest.fn(() => null);
+
+      ensureConnectivity(maze, from, to, pathfinder);
+
+      expect(maze[to.y][to.x]).toBe(CELL_TYPES.OPEN);
+      expect(maze[from.y][from.x]).toBe(CELL_TYPES.WALL); // starting cell itself is never opened by the carve step
     });
   });
 
