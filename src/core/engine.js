@@ -152,13 +152,7 @@ export function canMove(state, player, pos) {
   const otherPos = state[otherPlayer === 'red' ? 'redPos' : 'bluePos'];
   if (pos.x === otherPos.x && pos.y === otherPos.y) return false;
 
-  // Can't move to cheese position (should already be handled, but safety check)
-  const cheesePos = state.cheesePos;
-  if (pos.x === cheesePos.x && pos.y === cheesePos.y) {
-    // Actually, moving to cheese is allowed (and wins)
-    return true;
-  }
-
+  // Moving onto the cheese position is allowed (and wins the game)
   return true;
 }
 
