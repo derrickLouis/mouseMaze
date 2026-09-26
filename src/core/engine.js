@@ -157,6 +157,17 @@ export function canMove(state, player, pos) {
 }
 
 /**
+ * Check if a position falls within the maze grid bounds
+ * @param {Object} pos - Position {x, y}
+ * @param {number[][]} maze - The maze to check against
+ * @returns {boolean} True if the position is within bounds
+ */
+function isWithinBounds(pos, maze) {
+  return pos.y >= 0 && pos.y < maze.length &&
+         pos.x >= 0 && pos.x < maze[pos.y].length;
+}
+
+/**
  * Check if a player can perform a sabotage
  * @param {Object} state - Current game state
  * @param {string} player - 'red' or 'blue'
@@ -167,6 +178,11 @@ export function canMove(state, player, pos) {
 export function canSabotage(state, player, removePos, placePos) {
   if (state.gameOver) return false;
   if (state.sabotageTokens[player] <= 0) return false;
+
+  // Both positions must be within the maze bounds
+  if (!isWithinBounds(removePos, state.maze) || !isWithinBounds(placePos, state.maze)) {
+    return false;
+  }
 
   // Remove position must be a wall (and not border)
   if (state.maze[removePos.y][removePos.x] !== CELL_TYPES.WALL) return false;

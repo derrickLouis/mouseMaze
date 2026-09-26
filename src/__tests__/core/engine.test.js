@@ -266,11 +266,27 @@ describe('Game Engine', () => {
 
     test('returns false if trying to place wall on cheese', () => {
       const removePos = { x: 2, y: 2 };
-      
+
       testMaze[removePos.y][removePos.x] = CELL_TYPES.WALL;
       initialState.maze = testMaze.map(row => [...row]);
 
       expect(canSabotage(initialState, 'red', removePos, INITIAL_POSITIONS.CHEESE)).toBe(false);
+    });
+
+    test('returns false instead of throwing for out-of-bounds remove position', () => {
+      expect(() => canSabotage(initialState, 'red', { x: -1, y: 2 }, { x: 3, y: 3 })).not.toThrow();
+      expect(canSabotage(initialState, 'red', { x: -1, y: 2 }, { x: 3, y: 3 })).toBe(false);
+      expect(canSabotage(initialState, 'red', { x: 2, y: 100 }, { x: 3, y: 3 })).toBe(false);
+    });
+
+    test('returns false instead of throwing for out-of-bounds place position', () => {
+      const removePos = { x: 2, y: 2 };
+      testMaze[removePos.y][removePos.x] = CELL_TYPES.WALL;
+      initialState.maze = testMaze.map(row => [...row]);
+
+      expect(() => canSabotage(initialState, 'red', removePos, { x: 100, y: 3 })).not.toThrow();
+      expect(canSabotage(initialState, 'red', removePos, { x: 100, y: 3 })).toBe(false);
+      expect(canSabotage(initialState, 'red', removePos, { x: 3, y: -1 })).toBe(false);
     });
   });
 
