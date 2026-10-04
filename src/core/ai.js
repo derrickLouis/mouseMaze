@@ -4,7 +4,7 @@
  */
 
 import { findPath } from '../algorithms/index';
-import { MAZE_SIZE, MAX_MOVES_PER_TURN } from './constants';
+import { MAZE_SIZE, MAX_MOVES_PER_TURN, SABOTAGE_SCORING, MAX_SABOTAGE_EVALUATIONS } from './constants';
 
 /**
  * Find all removable walls (excluding borders)
@@ -55,17 +55,25 @@ function findValidPlacements(maze, myPos, opponentPos, cheesePos) {
  * @returns {number} Bonus score
  */
 function calculateStrategicBonuses(opponentAlgorithm, opponentCurrentDist, myCurrentDist, tokens) {
+  const { ALGORITHM_BONUS, CONTEXT_BONUS } = SABOTAGE_SCORING;
+
   let algorithmBonus = 0;
   if (opponentAlgorithm === 'astar') {
-    algorithmBonus = 2; // A* is predictable, easier to sabotage
+    algorithmBonus = ALGORITHM_BONUS.ASTAR; // A* is predictable, easier to sabotage
   } else if (opponentAlgorithm === 'dfs') {
-    algorithmBonus = -1; // DFS is unpredictable, harder to sabotage effectively
+    algorithmBonus = ALGORITHM_BONUS.DFS; // DFS is unpredictable, harder to sabotage effectively
   }
 
   let contextBonus = 0;
-  if (opponentCurrentDist <= 3) contextBonus += 5; // Opponent close to winning
-  if (myCurrentDist > opponentCurrentDist + 2) contextBonus += 3; // I'm behind
-  if (tokens >= 2 && myCurrentDist <= 6) contextBonus += 2; // Endgame with tokens
+  if (opponentCurrentDist <= CONTEXT_BONUS.OPPONENT_CLOSE_TO_WIN_DISTANCE) {
+    contextBonus += CONTEXT_BONUS.OPPONENT_CLOSE_TO_WIN_BONUS; // Opponent close to winning
+  }
+  if (myCurrentDist > opponentCurrentDist + CONTEXT_BONUS.PLAYER_BEHIND_THRESHOLD) {
+    contextBonus += CONTEXT_BONUS.PLAYER_BEHIND_BONUS; // I'm behind
+  }
+  if (tokens >= CONTEXT_BONUS.ENDGAME_TOKEN_THRESHOLD && myCurrentDist <= CONTEXT_BONUS.ENDGAME_DISTANCE_THRESHOLD) {
+    contextBonus += CONTEXT_BONUS.ENDGAME_BONUS; // Endgame with tokens
+  }
 
   return algorithmBonus + contextBonus;
 }
@@ -82,7 +90,7 @@ function calculateStrategicBonuses(opponentAlgorithm, opponentCurrentDist, myCur
  * @param {string} myAlgorithm - Current player's algorithm
  * @param {string} opponentAlgorithm - Opponent's algorithm
  * @param {number[][]} maze - The current maze
- * @param {number} maxEvaluations - Maximum number of combinations to evaluate (default: 200)
+ * @param {number} maxEvaluations - Maximum number of combinations to evaluate (default: MAX_SABOTAGE_EVALUATIONS)
  * @returns {Object|null} Best sabotage option or null if none found
  */
 export function evaluateAllSabotageOptions(
@@ -96,7 +104,7 @@ export function evaluateAllSabotageOptions(
   myAlgorithm,
   opponentAlgorithm,
   maze,
-  maxEvaluations = 200
+  maxEvaluations = MAX_SABOTAGE_EVALUATIONS
 ) {
   if (tokens <= 0) return null;
 
@@ -134,7 +142,8 @@ export function evaluateAllSabotageOptions(
       const bonuses = calculateStrategicBonuses(opponentAlgorithm, opponentCurrentDist, myCurrentDist, tokens);
 
       // Min-max score: prioritize self-help, then opponent-harm
-      const score = (selfBenefit * 3) + (opponentHarm * 2) + bonuses;
+      const score = (selfBenefit * SABOTAGE_SCORING.SELF_BENEFIT_WEIGHT) +
+        (opponentHarm * SABOTAGE_SCORING.OPPONENT_HARM_WEIGHT) + bonuses;
 
       if (score > bestScore) {
         bestScore = score;
@@ -171,8 +180,9 @@ export function shouldSabotageOverMove(sabotageOption, movementBenefit) {
   const moveAdvantage = Math.min(MAX_MOVES_PER_TURN, movementBenefit);
 
   // Sabotage total benefit
-  const sabotageAdvantage = sabotageOption.selfBenefit + (sabotageOption.opponentHarm * 0.8);
+  const sabotageAdvantage = sabotageOption.selfBenefit +
+    (sabotageOption.opponentHarm * SABOTAGE_SCORING.SABOTAGE_ADVANTAGE_MULTIPLIER);
 
   // Only sabotage if it provides more total strategic value than moving
-  return sabotageAdvantage > moveAdvantage + 1; // +1 threshold for move preference
+  return sabotageAdvantage > moveAdvantage + SABOTAGE_SCORING.MOVE_PREFERENCE_THRESHOLD;
 }
