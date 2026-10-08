@@ -74,15 +74,22 @@ npm start
 │   │   ├── SidePanel/      # AI calc, stats, game log
 │   │   ├── AlgorithmSelectors/
 │   │   ├── WinnerOverlay/
+│   │   ├── FullscreenView/
+│   │   ├── SpeedControl/
+│   │   ├── ErrorBoundary/
 │   │   └── Tokens/
 │   ├── core/              # Pure game logic (no React)
 │   │   ├── constants.js
 │   │   ├── engine.js
+│   │   ├── ai.js
 │   │   └── maze.js
 │   ├── hooks/             # Custom React hooks
-│   │   └── useVisualization.js
+│   │   ├── useVisualization.js
+│   │   ├── useAutoplay.js
+│   │   └── useGameState.js
 │   ├── __tests__/         # Test files
 │   │   ├── algorithms/
+│   │   ├── components/
 │   │   └── core/
 │   ├── App.js
 │   └── MouseMaze.jsx      # Main orchestrator component
@@ -98,10 +105,11 @@ npm test
 ```
 
 **Test Coverage:**
-- ✅ 85 tests passing
+- ✅ 123 tests passing
 - ✅ Algorithm correctness (BFS, A*, DFS, Bidirectional)
 - ✅ Core game engine logic
 - ✅ Maze generation and validation
+- ✅ UI component behavior (Controls, SpeedControl, AlgorithmSelectors, FullscreenView)
 
 ## Architecture Highlights
 
