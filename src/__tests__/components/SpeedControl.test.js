@@ -19,7 +19,7 @@ import {
 
 describe('SpeedControl', () => {
   it('associates the visible "Speed:" label with the slider', () => {
-    const { container } = render(<SpeedControl playSpeed={DEFAULT_SPEED_MS} setPlaySpeed={() => {}} />);
+    render(<SpeedControl playSpeed={DEFAULT_SPEED_MS} setPlaySpeed={() => {}} />);
 
     // Assert the htmlFor/id pair directly: the input also carries an
     // aria-label, which would mask a broken association from getByLabelText.
@@ -29,7 +29,9 @@ describe('SpeedControl', () => {
     expect(label.tagName).toBe('LABEL');
     expect(label.getAttribute('for')).toBe(slider.id);
     expect(slider.id).toBeTruthy();
-    expect(container.querySelectorAll(`#${slider.id}`)).toHaveLength(1);
+    // getByLabelText throws if the label text matches more than one form
+    // element, so a successful lookup also confirms the id isn't duplicated.
+    expect(screen.getByLabelText('Speed:')).toBe(slider);
   });
 
   it('gives the slider an aria-label as well as the visible label', () => {
