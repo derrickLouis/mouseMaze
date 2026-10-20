@@ -239,6 +239,11 @@ describe('Game Engine', () => {
       expect(canSabotage(initialState, 'red', { x: 2, y: 2 }, { x: 3, y: 3 })).toBe(false);
     });
 
+    test('returns false if game is over', () => {
+      initialState.gameOver = true;
+      expect(canSabotage(initialState, 'red', { x: 2, y: 2 }, { x: 3, y: 3 })).toBe(false);
+    });
+
     test('returns false if remove position is not a wall', () => {
       const removePos = { x: 1, y: 1 }; // Open cell
       expect(canSabotage(initialState, 'red', removePos, { x: 3, y: 3 })).toBe(false);

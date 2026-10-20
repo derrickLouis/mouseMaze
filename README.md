@@ -105,7 +105,7 @@ npm test
 ```
 
 **Test Coverage:**
-- ✅ 123 tests passing
+- ✅ 133 tests passing
 - ✅ Algorithm correctness (BFS, A*, DFS, Bidirectional)
 - ✅ Core game engine logic
 - ✅ Maze generation and validation
