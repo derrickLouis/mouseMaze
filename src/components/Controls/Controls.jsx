@@ -22,6 +22,7 @@ const Controls = ({
       <button
         onClick={togglePlay}
         aria-label={playLabel}
+        aria-pressed={isPlaying}
         title={playLabel}
         className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white rounded-lg transition-all shadow-lg"
       >

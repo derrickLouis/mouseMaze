@@ -73,6 +73,14 @@ describe('Controls', () => {
       const toggle = screen.getByRole('button', { name: 'Exit Full Screen' });
       expect(toggle).toHaveAttribute('aria-pressed', 'true');
     });
+
+    it('reports autoplay state through aria-pressed', () => {
+      renderControls({ isPlaying: false });
+      expect(screen.getByRole('button', { name: 'Auto Play' })).toHaveAttribute('aria-pressed', 'false');
+
+      renderControls({ isPlaying: true });
+      expect(screen.getByRole('button', { name: 'Pause' })).toHaveAttribute('aria-pressed', 'true');
+    });
   });
 
   describe('behaviour', () => {
